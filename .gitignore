@@ -56,3 +56,15 @@ docs/_build/
 
 # PyBuilder
 target/
+
+backup/
+
+rand/
+
+results/
+
+*.sav
+
+*.csv
+
+config\.ini

@@ -28,7 +28,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 #Other py files
 from login import login
-from data_processing2 import proc_one_co
+from data_processing import proc_one_co
 
 def get_conf(p,thresholds):
     for i in range(len(thresholds))[::-1]:
@@ -48,10 +48,10 @@ config.read('config.ini')
 #Load data
 try:
     [clf,thresholds,ft_words] = pickle.Unpickler(open('classifier.sav','rb')).load()
-    
 except:
     print("Failed to load classifier/learner data.")
     sys.exit(1)
+    
 #Login
 try:
     r = login(config['Login']['username'], config['Login']['password'], config['Login']['client_id'],
@@ -60,8 +60,8 @@ try:
 except:
     print("Login Crashed")
     sys.exit(1)
-if str(type(r)) != "<class 'praw.reddit.Reddit'>":
-    print("Login Failed")
+if r.user.me() == None:
+    print("No login credentials or invalid login.")
     sys.exit(1)
     
 ###############################################################################

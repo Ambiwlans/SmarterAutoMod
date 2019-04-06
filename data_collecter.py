@@ -16,9 +16,10 @@
 ### Imports, Defines
 ###############################################################################
 
-#General
+#General 
 import sys
 import time
+import shutil
 import configparser
 import re
 
@@ -38,8 +39,16 @@ starttime = time.time()
 
 #read in settings from config file
 config = configparser.ConfigParser()
-config.read('config.ini')
 
+if config.read('config.ini') == []:
+    try:
+        shutil.copyfile('config.ini.default', 'config.ini')
+        print("Modify config.ini with your information before continuing")
+    except:
+        print("Error: No File write access")
+        sys.exit(1)
+    sys.exit(0)
+    
 print("Comment collector saves every 10th sumbissions and can be stopped safely at any time.")
 print("Should collect around 6000 comments/hour ... expect it to take a while.")
 #TODO2 - find out if there is a way to lower # of api calls. Checking parent commenter is COSTLY
@@ -60,10 +69,10 @@ try:
 except:
     print("Login Crashed")
     sys.exit(1)
-if str(type(r)) != "<class 'praw.reddit.Reddit'>":
-    print("Login Failed")
+if r.user.me() == None:
+    print("No login credentials or invalid login.")
     sys.exit(1)
-
+    
 ###############################################################################
 ### Load old data if set/available
 ###############################################################################
