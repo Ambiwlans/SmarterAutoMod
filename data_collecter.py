@@ -1,16 +1,24 @@
 # -*- coding: utf-8 -*-
 """
 @author: u/Ambiwlans
-@general: Autoautomod learns from old comment data/mod actions and can automatically
+@general: SmarterAutoMod learns from old comment data/mod actions and can automatically
     report/remove comments once trained.
-@description: Stage 1. Data collection. Implemented by classifier.py
-@credit: u/CAM-Gerlach - Tireless consultant, ML wizard
-    r/SpaceX mod team - let me slack off on modding while I built this
+@description: Stage 1. Raw data collection. Takes several hours.
+@credit: r/SpaceX mod team - Thanks to everyone who let me slack on mod duties while I made this
+    u/CAM-Gerlach - Tireless consultant, ML wizard
 """
 
-#TODO1 - for 1.0 release (internal)
-#TODO2 - for 2.0 release (public)
-    # add logging?
+#TODO2 - add front end updating (adding in recent threads to the top of the df)
+#TODO3 - use psraw (pushshift ) or similar to go past the 1000 subm limit /r/pushshift/
+#TODO3 - logging?
+#TODO3 - Add an option to save on quit?
+#TODO3 - Could be saving more efficiently but it probably doesn't matter
+#TODO3 - Be more efficient with api calls. Checking parent commenter is COSTLY
+    #1 call per 100 comments + at least 1 call for every parent comment + 2 to check accnt karmas.
+    #could keep track of all comments in a submission to skip c.parent() calls
+    #and track all users to avoid calling the same users repeatedly.
+        #This would need an 'update users' flag. Or throw out user data between runs.
+    
     
 ###############################################################################
 ### Imports, Defines
@@ -51,10 +59,7 @@ if config.read('config.ini') == []:
     
 print("Comment collector saves every 10th sumbissions and can be stopped safely at any time.")
 print("Should collect around 6000 comments/hour ... expect it to take a while.")
-#TODO2 - find out if there is a way to lower # of api calls. Checking parent commenter is COSTLY
-    #1 call per 100 comments + at least 1 call for every parent comment + 2 to check accnt karmas.
-    #could keep track of all comments in a submission to skip c.parent() calls
-    #c.author basically seems fucked though.
+
 print("----")
 
 
@@ -76,16 +81,13 @@ if r.user.me() == None:
 ###############################################################################
 ### Load old data if set/available
 ###############################################################################
-
-#TODO2 - add front end updating (adding in recent threads to the top of the df)
-#TODO3 - use psraw (pushshift ) or similar to go past the 1000 subm limit /r/pushshift/
     
 subreddit = r.subreddit(config['General']['subreddit'])     # read comments from sub in config    
 
 #load and continue from existing csv
 if config['General']['use_old_df']:
     try:
-        rawdf = pd.read_csv("rawdf.csv", keep_default_na=False)
+        rawdf = pd.read_csv("rawdf.csv.gz", compression='gzip', keep_default_na=False)
         rawdf = rawdf.drop(columns=['Unnamed: 0'])
         continue_param = {'after':rawdf.iloc[-1]['subm_fullname']}
         print("Continuing collection from old data file.")
@@ -109,7 +111,7 @@ if config['General']['use_old_df']:
         co_count = len(rawdf)
         s_count = len(np.unique(rawdf['subm_fullname']))
                 
-        print("Start from scratch by disabling in config.ini or by deleting rawdf.csv")
+        print("Start from scratch by disabling in config.ini or by deleting/renaming rawdf.csv.gz")
     except FileNotFoundError:
         rawdf = pd.DataFrame()
         s_count = 0
@@ -117,9 +119,14 @@ if config['General']['use_old_df']:
         continue_param = {}
         print("Old data file not found. Creating new one.")
     except:
-        print(sys.exc_info()[0])
+        print("Error: " + str(sys.exc_info()[0]))
         sys.exit(2)
-
+else:
+    rawdf = pd.DataFrame()
+    s_count = 0
+    co_count = 0
+    continue_param = {}
+    print("Creating new DataFile.")
 print("----")
 
 ###############################################################################
@@ -134,7 +141,7 @@ for s in subreddit.new(limit=int(config['General']['num_submissions']),params=co
             ignore_message = ("Ignored dead thread: \"" + s.title +"\"")
         if s.num_comments > int(config['General']['ignore_max_co']):
             ignore_message = ("Ignored massive thread: \"" + s.title +"\"")
-        if (s.banned_by):   #removed threads
+        if (s.banned_by):   #removed threads   ##This doesn't seem to be necessary in this configuration (new won't return removed threads)
             ignore_message = ("Ignored removed thread: \"" + s.title +"\"")
         if(re.search(config['General']['ignore_submission_title'],s.title)):
             ignore_message = ("Ignored by title: \"" + s.title +"\"")
@@ -152,59 +159,58 @@ for s in subreddit.new(limit=int(config['General']['num_submissions']),params=co
               
         s.comments.replace_more(limit=0)
         comments = s.comments.list()
+    except KeyboardInterrupt:
+        print("Exiting...")
+        sys.exit(0)
     except Exception as ex:
-        #TODO2 - switch this to a more normal python error handling setup
-        if str(type(ex).__name__) == 'BdbQuit':     #This is sadly needed to cancel running code in python. wtf
-            sys.exit(0)
         print("ERROR: Failed reading submission:")
-        try: print("   " + str(s.permalink))
+        try: print("   www.reddit.com" + str(s.permalink))
         except: print("   Corrupt data/connection error.")
         if str(type(ex).__name__) == 'NotFound':
             print("404 Error")
             continue
-        template = "An exception of type {0} occurred. Arguments:\n{1!r}"
-        message = template.format(type(ex).__name__, ex.args)
-        print(message)
+        print("Error: " + str(type(ex).__name__))
+        print("Skipping Submission...")
         continue
-    for c in comments:
+    for co in comments:
         try:
             co_count = co_count + 1
             #Ignore certain comments
-            if(re.search(config['General']['ignore_user'],str(c.author))):
+            if(re.search(config['General']['ignore_user'],str(co.author))):
                 continue
             if s.approved_at_utc is not None:
-                if((c.created_utc - s.approved_at_utc) > (int(config['General']['ignore_late_comment_age']) * 3600 )):
+                if((co.created_utc - s.approved_at_utc) > (int(config['General']['ignore_late_comment_age']) * 3600 )):
                     #print("Ignored late comer comment: \"" + c.body +"\"")
                     continue
-            if c.body == "[deleted]" or c.body == "" or c.body == "[removed]":
+            if co.body == "[deleted]" or co.body == "" or co.body == "[removed]":
                 #print("Ignored deleted comment: \"" + c.body +"\"")
                 continue
-            if(re.search(config['General']['ignore_comment_content'],str(c.body))):
-                print("Ignored comment by content: \"" + c.body +"\"")
+            if(re.search(config['General']['ignore_comment_content'],str(co.body))):
+                print("Ignored comment by content: \"" + co.body +"\"")
                 continue
             
             #TODO2 - check that we got back valid information ... error checking better than the try/catch?
             #TODO2 - using approved_at_utc over created_utc. This may not word for other subs
             
-            p = c.parent()
-            author = c.author
+            p = co.parent()
+            author = co.author
             if author is None:      #comments from users that have deleted their account
                 author_karma = 0
                 author_age = 0
             else:
                 author_karma = author.comment_karma
-                author_age = c.created_utc - author.created_utc
+                author_age = co.created_utc - author.created_utc
                 
             #Add our collected comment to the dataframe
-            raw_comment = pd.Series({'removed':c.removed,
-                                     'comment':c.body.encode('ascii', 'ignore').decode(), 
-                                     'score':c.score,
-                                     'permalink':c.permalink, 
-                                     'time':c.created_utc,
+            raw_comment = pd.Series({'removed':co.removed,
+                                     'comment':co.body.encode('ascii', 'ignore').decode(), 
+                                     'score':co.score,
+                                     'permalink':co.permalink, 
+                                     'time':co.created_utc,
                                      'author':author,
                                      'author_karma':author_karma,
                                      'author_age':author_age,
-                                     'top_lev':int(c.parent_id[0:2] == 't3'), #'t3' means parent is a submission, not comment
+                                     'top_lev':int(co.parent_id[0:2] == 't3'), #'t3' means parent is a submission, not comment
                                      'p_removed':p.removed,
                                      'p_score':p.score,
                                      'subm_fullname':s.name,
@@ -213,32 +219,40 @@ for s in subreddit.new(limit=int(config['General']['num_submissions']),params=co
                                      'subm_approved_at_utc':s.approved_at_utc,
                                      'subm_num_co':len(comments)})
             rawdf = rawdf.append(raw_comment, ignore_index=True)
+        except KeyboardInterrupt:
+            print("Exiting...")
+            sys.exit(0)
         except Exception as ex:
-            #Unable to read a comment. This happens for reddit-wide shadowbanned users... 
-            #and connection issues
-            if str(type(ex).__name__) == 'BdbQuit':     #This is sadly needed to cancel running code in python. wtf
-                sys.exit(0)
             print("ERROR: Failed reading comment:")
-            try: print("   " + str(c.permalink))
+            try: print("   www.reddit.com" + str(co.permalink))
             except: print("   Corrupt data/connection error.")
             if str(type(ex).__name__) == 'NotFound':
-                print("404 Error or shadowbanned user.")
+                print("404 Error")
                 continue
-            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
-            message = template.format(type(ex).__name__, ex.args)
-            print(message)
+            print("Error: " + str(type(ex).__name__))
+            print("Skipping Comment...")
             continue
         
     #save the csv every 10th submission scanned
     if s_count % 10 is 0:
         try:
-            #TODO2 - could be just appending to save more efficiently but it probably doesn't matter much.
-            rawdf.to_csv("rawdf.csv")
+            rawdf.to_csv("rawdf.csv.gz", compression='gzip')
             print("Saved raw data.")
             print("Elapsed Time: " + str(round(((time.time() - starttime)/60),2)) + "m")
         except:
-            print("ERROR: Saving to file failed.")
-        
+            print("ERROR: Unable to access 'rawdf.csv.gz'. Check that you have permissions and it isn't in use.")
+            input("Press Enter to try again...")
+            
+#Done checking all submissions
+try:
+    rawdf.to_csv("rawdf.csv.gz", compression='gzip')
+    print("Saved raw data.")
+    print("Total Elapsed Time: " + str(round(((time.time() - starttime)/60),2)) + "m")
+    print("----")
+    print("Run data_processing.py next to process the raw data.")
+except:
+    print("ERROR: Unable to access 'rawdf.csv.gz'. Check that you have permissions and it isn't in use.")
+    input("Press Enter to try again...")    
         
     
     

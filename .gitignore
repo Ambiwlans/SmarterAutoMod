@@ -68,3 +68,5 @@ results/
 *.csv
 
 config\.ini
+
+*.gz
