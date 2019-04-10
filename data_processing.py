@@ -1,11 +1,31 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sat Feb 23 13:01:21 2019
-
-@author: Angelo
-@decription: Processes rawdf.csv into pdf.csv (our actual features/X,y vals to train on)
-
+@author: u/Ambiwlans
+@general: SmarterAutoMod learns from old comment data/mod actions and can automatically
+    report/remove comments once trained.
+@description: Stage 2. Processes comments into features to train on.
+@credit: r/SpaceX mod team - Thanks to everyone who let me slack on mod duties while I made this
+    u/CAM-Gerlach - Tireless consultant, ML wizard
 """
+
+#TODO1 - tidy main, proc_one_co
+    # rem unneeded virtcsv stuff
+
+#TODO2 - Allow/use custom regex matches    
+#TODO2 - Add verbose flag for debugging. Show comments at each stage of processing.
+#TODO2 - More Features
+    # percentages (like %caps)
+    # is parent of parent comment me? (convo detection)
+    # is parent comments a question?
+    # more detailed caps info (1st char cap, all caps words)
+    # try frequency values instead of raw counts of ft_words, or do both?
+#TODO2 - reorganize the stage2 virtual csv thing to save on memory (only important for like 1m + comments). Cur system is ugly
+#TODO3 - ask first when saving over existing file.
+#TODO3 - trim the counters every 25k comments for a speed boost?
+#TODO3 - clip the index columns rather than saving them?
+#TODO3 - switch feature word selection to use a RF or elastic loop rather than simple stats.... 
+#TODO3 - squeeze everything into uint8s? No point if it works fast enough already
+#TODO3 - Risk of bobbytables abuses (say _domain_twittercom in a comment to confuse bot) is pretty minor
 
 ###############################################################################
 ### Imports, Defines, Globals
@@ -15,33 +35,34 @@ Created on Sat Feb 23 13:01:21 2019
 import sys
 import re
 import time
-import configparser
+
+#Math/datastructs
+import pandas as pd
 from collections import Counter
 
-#Create and use a virtual csv because adding rows to dataframes is insanely slow (~5000x as slow)
+#Natural Language Toolkit
+import nltk
+
+#Create and use a virtual csv because adding rows to dataframes is insanely slow (~5000x as slow at best)
 from io import StringIO
 from csv import writer 
 virtcsv = StringIO()
 csv_writer = writer(virtcsv)
-csvheader = 0
 
-#Math/datastructs/visualizations
-import pandas as pd
-import nltk
-
-#read in settings from config file
+#Config
+import configparser
 config = configparser.ConfigParser()
 config.read('config.ini')
 
-#Globals for finding our set of word features (cntftwords)
-num_co = 1                  #the number of comments we're processing
+#Const
 num_ft_words = int(config['Processing']['num_ft_words'])      #how many feature words to collect
-cntpos = Counter({})        #counter for all the words in the positive cases (bad/removed comments)
-cntneg = Counter({})        #counter for all the words in the negative cases (good/allowed comments)
-coftwords = Counter()       #current comment's feature words
-cntftwords = Counter()      #a list of the feature words (not actually a list for technical reasons)
 
-#Regex borrowed from NLTK
+#Globals for finding our set of word features (ft_words)
+cnt_pos_words = Counter({})     #counter for all the words in the positive cases (bad/removed comments)
+cnt_neg_words = Counter({})     #counter for all the words in the negative cases (good/allowed comments)
+cnt_co_words = Counter()        #current comment's feature words
+
+#Regex borrowed from NLTK.casual Shown here for convenience
 URLS = r"""			# Capture 1: entire matched URL
   (?:
   https?:				# URL protocol and colon
@@ -84,6 +105,7 @@ URLS = r"""			# Capture 1: entire matched URL
                             # avoid matching "foo.na" in "foo.na@example.com"
   )
 """
+
 EMOTICONS = r"""
     (?:
       [<>]?
@@ -98,20 +120,16 @@ EMOTICONS = r"""
       |
       <3                         # heart
     )"""
-        
+    
 ###############################################################################
 ### Load (the raw data)
 ###############################################################################
-#
-#TODO2 - remove from ram when done w/ it
+
         
 def load_data():
-    global num_co
-    
     try:        
-        rawdf = pd.read_csv("rawdf.csv", keep_default_na=False)#[0:1000] ##temp for testing
-        rawdf = rawdf.drop(columns=['Unnamed: 0'])
-        num_co = len(rawdf)
+        rawdf = pd.read_csv("rawdf.csv.gz", keep_default_na=False, compression='gzip').drop(columns=['Unnamed: 0'])
+        print("Loaded raw comments.")
         return rawdf
     except:
         print("Failed to load csv.")
@@ -122,50 +140,59 @@ def load_data():
 ### Helper Functions
 ###############################################################################
 
-# Takes raw tokens and will group certain things to help the learner out
-def token_processing(ppco,token_text):
-    #TODO1 can we use more efficient regex? (incl start char, use match rather than search)
-    #convert links to identifiable token
-    if re.search(URLS,token_text):
-        if re.search(r'\.gifv?',token_text): 
-            token_text = '_giflink'
-        elif re.search(r'\.gif|\.png|\.jpg|\.mp4|imgur',token_text): 
-            token_text = '_imagelink'
-        #add a rawlink feature regardless to help learning rates
-        ppco['tokens'].append('_rawlink')
-    #TODO2 - fix these
-    #convert times (very liberal)
-    #if re.search('(\d:\d)|T\-|T\+',token_text):
-    #    token_text = '_time'
-    #convert dates (very liberal)
-    #if re.search('\d(/|-)\d',token_text):
-    #    token_text = '_date'
-    #convert numbers > 1 digit
-    if re.search('\d\d',token_text):
-        token_text = '_number'
-    ##TODO3 collapse ">" quotes ?
-     ##probably not worth it
-    #convert emotes
-    if re.search(EMOTICONS,token_text):
-        token_text = '_emoticon'
-    if re.search("^('|\"|`|â€)",token_text):
-        token_text = '_apostrophe'
-    if token_text == ",":
-        token_text = '_comma'
-    #convert other special chars
-    if re.search(r'\(|\)|\[|\]',token_text):
-        token_text = '_bracket'
-    if re.search(r'\\|\||/',token_text):
-        token_text = '_slashpipe'
+# Takes raw tokens and will bin certain features to improve learning rates        
+def token_processing(tokens):
     
-    #TODO2 - stemming? 
-    return token_text
+    #TODO1 can we use more efficient regex? (incl start char, use match rather than search) ... though this is a small part of compute time
+    for tk in tokens:
+        #convert links
+        if re.search(URLS,tk):
+            #bust out the domain and add it as another token
+            try:
+                tokens.append('_d_' + re.search(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]",tk).group().replace('.',''))
+            except AttributeError:
+                print("Unable to find domain for: " + tk)            
+            if re.search(r'.gifv?',tk): 
+                tk = '_giflink'
+            elif re.search(r'.gif|.png|.jpg|.mp4|imgur',tk): 
+                tk = '_imagelink'
+            #add a rawlink feature as well to help learning rates
+            tokens.append('_rawlink')
+        #convert times (very liberal)
+        if re.search(r'\d\:\d\d',tk):
+            tk = '_time'
+        #convert dates (very liberal)
+        if re.search(r'\d(/|-)\d\d',tk):
+            tk = '_date'
+        #convert numbers > 1 digit
+        if re.search(r'^\d\d',tk):
+            tk = '_number'
+        #convert emotes
+        if re.search(EMOTICONS,tk):
+            tk = '_emoticon'
+        #convert quotation marks
+        if re.search(r"""^('|"|`|â€)""",tk):
+            tk = '_quote'
+        #convert commas (just to avoid potential bugs with csvs)
+        if tk == ",":
+            tk = '_comma'
+        #convert other special chars
+        if re.search(r'^(\(|\)|\[|\]|{|})',tk):
+            tk = '_bracket'
+        if re.search(r'^(\\|\||/)',tk):
+            tk = '_slashpipe'
+        
+        #TODO2 - stemming? 
+        
+        ##TODO3 - collapse ">" quotes ? Probably not worth it
+    return tokens
             
 
-# Convert "[a link](http://blah.ca)" -> "a link _redditlink"
+# Convert "[a link](http://blah.ca)" -> "a link _redditlink _domain_blah.ca"
 def format_redditlinks(text):
     try:
-        ret = re.search("(?<=\[).+?(?=\])",text.group()).group()
+        ret = re.search(r"(?<=\[).+?(?=\])",text.group()).group()
+        url = re.search(r"(?<=\]\().+?(?=\))",text.group()).group()
     except AttributeError:
         ret = ""
     ret+=" _redditlink "
@@ -173,6 +200,11 @@ def format_redditlinks(text):
         ret = ret + "_giflink"
     elif re.search(r'\.gif|\.png|\.jpg|\.mp4|imgur',text.group()): 
         ret = ret + '_imagelink'
+    #add the domain as another token
+    try:
+        ret += ' _d_' + re.search(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]",url).group().replace('.','')
+    except (AttributeError, UnboundLocalError):
+        print("Unable to find domain for: " + text.group())
     return ret
 
 
@@ -183,9 +215,10 @@ def format_redditlinks(text):
 
 def stage_1(rawdf):
     #setup
-    global csvheader, cntpos, cntneg
+    global cnt_pos_words, cnt_neg_words
+    csvheader = 0
     t1000co = time.time()
-    for i in range(num_co):
+    for i in range(len(rawdf)):
         #DEV - clock ourselves every 1000 comments
         if i % 1000 is 0 and i != 0:
             print("------------------------------------")
@@ -220,15 +253,14 @@ def stage_1(rawdf):
         #######################################################################
         
         tformat = time.time()
+        
         #count caps and lower them
         ppco['__num_caps'] = sum(1 for ch in ppco['comment'] if ch.isupper())
-        #TODO1 more detailed caps info (1st char cap, all caps words)
         ppco['comment'] = ppco['comment'].lower()
         
         #count characters
         ppco['__num_chars'] = len(ppco['comment'])
     
-        ##TODO1 - are percentages redundant features? If so, add more. If not, remove this one.
         ppco['__pct_caps'] = 0
         if ppco['__num_chars'] is not 0:
             ppco['__pct_caps'] = ppco['__num_caps']/ppco['__num_chars']
@@ -239,7 +271,6 @@ def stage_1(rawdf):
         cur_cons_rep_ch = ' '
         for ch in ppco['comment']:
             #ignore whitespace 
-            ##TODO1 check if this actually works properly
             if re.match('\s',ch):
                 continue
             if ch == cur_cons_rep_ch:
@@ -267,9 +298,12 @@ def stage_1(rawdf):
         
         #Process comment as tokens
         ppco['tokens'] = nltk.tokenize.casual_tokenize(ppco['comment'])
+        ppco['tokens'] = token_processing(ppco['tokens'])
+        
+        #Count tokens
         ppco['__num_words'] = len(ppco['tokens'])
-        for tk in range(ppco['__num_words']):
-            ppco['tokens'][tk] = token_processing(ppco,ppco['tokens'][tk])
+        ##for tk in range(ppco['__num_words']):
+          ##  ppco['tokens'][tk] = token_processing(ppco,ppco['tokens'][tk])
         
         try:
             ppco['__longest_word'] = len(max(ppco['tokens'], key=len))
@@ -298,16 +332,16 @@ def stage_1(rawdf):
     
         tsum = time.time() ##Time (to sum our word counters)
         #convert freq counts of each token as int value
-        cntco = Counter(nltk.FreqDist(ppco['tokens']))
-        ppco['__num_uniques'] = len(cntco)  
+        cnt_co = Counter(nltk.FreqDist(ppco['tokens']))
+        ppco['__num_uniques'] = len(cnt_co)  
     
         ##TODO3 - This step is Annoyingly slow. (>>half the processing time)
         ##Unfortunately it is also hard to make faster. Batches may allow a minor speed up
         # Add the counters from this comment to the total counts
         if ppco["__rem"]:
-            cntpos = cntpos + cntco
+            cnt_pos_words = cnt_pos_words + cnt_co
         if not ppco["__rem"]:
-            cntneg = cntneg + cntco
+            cnt_neg_words = cnt_neg_words + cnt_co
             
         if i % 1000 is 0 and i != 0: print("Time to add last comment's words to our counter: " + str((time.time() - tsum))) 
     
@@ -322,30 +356,32 @@ def stage_1(rawdf):
 #######################################################################
 ### Find the feature word/token set
 #######################################################################
-##TODO3 - switch feature word selection to use a RF rather than simple stats.... 
         
 def find_ft_words():
     # Convert raw counts into % rates of total # words used
-    t = sum(cntpos.values())
-    for k in cntpos: cntpos[k] = cntpos[k] / t
-    t = sum(cntneg.values())
-    for k in cntneg: cntneg[k] = cntneg[k] / t
+    t = sum(cnt_pos_words.values())
+    for k in cnt_pos_words: cnt_pos_words[k] = cnt_pos_words[k] / t
+    t = sum(cnt_neg_words.values())
+    for k in cnt_neg_words: cnt_neg_words[k] = cnt_neg_words[k] / t
     
     # Select our feature words.
     # Sort by the raw difference in rates of appearance of words between pos and neg examples
-    cntftwords = cntpos.copy()
-    cntftwords.subtract(cntneg)
-    cntftwords = sorted(cntftwords.items(), key=lambda k: -abs(k[1]))[0:num_ft_words]
-    return cntftwords
+    ft_words = cnt_pos_words.copy()
+    ft_words.subtract(cnt_neg_words)
+    ft_words = sorted(ft_words.items(), key=lambda k: -abs(k[1]))[0:num_ft_words]
+    print('\n----')
+    print("Feature Word Set (with weights):")
+    print(ft_words)
+    return [ k[0] for k in ft_words ]
 
 ###############################################################################
 ### STAGE 2
 ###############################################################################
 
-def stage_2(ppdf):
-    global csvheader
+def stage_2(ppdf,ft_words):
+    csvheader = 0
     t1000co = time.time()
-    for i in range(num_co):
+    for i in range(len(ppdf)):
         ppco = ppdf.iloc[i]
         if i % 1000 is 0 and i != 0:
             print("------------------------------------")
@@ -358,15 +394,12 @@ def stage_2(ppdf):
         #TODO2 - fix this god awful hack before anyone else sees it
         tokens = ppco['tokens'][2:-2].split("', '")
         
-        ##Redundant? Can put in S1?
-        cntco = Counter(nltk.FreqDist(tokens))
+        #TODO3 - Redundant? Can put in S1?
+        cnt_co = Counter(nltk.FreqDist(tokens))
         
         #Fill our fake csv with final values to be saved
-        for k in cntftwords.keys(): coftwords[k] = cntco[k]
-        #TODO1 - try frequency values instead of raw counts
-        
-        #TODO2 squueze everything into uint8s? (0~255)
-        ##TODO2 - Risk of bobbytables abuses is pretty minor but maybe worth fixing
+        for k in ft_words: cnt_co_words[k] = cnt_co[k]
+
         pco = pd.Series({"__rem":ppco["__rem"], 
                                     "__score":ppco["__score"],
                                     "__age":ppco["__age"],
@@ -385,7 +418,7 @@ def stage_2(ppdf):
                                     "__subm_score":ppco["__subm_score"],
                                     "__subm_num_co":ppco["__subm_num_co"]
                                     })
-        pco = pco.append(pd.Series(coftwords))
+        pco = pco.append(pd.Series(cnt_co_words))
         
         if not csvheader:
             csvheader = True
@@ -393,25 +426,30 @@ def stage_2(ppdf):
         csv_writer.writerow(pco)
 
     
-#
-# Finalization/Saving
-# 
+###############################################################################
+### Finalization/Saving
+###############################################################################
 
 def save():
     virtcsv.seek(0)
     savedf = pd.read_csv(virtcsv)
     
+    #Save loop (keep trying while file is in use)
     saved = 0
     while saved == 0:
         try:
-            savedf.to_csv("pdf.csv")
+            savedf.to_csv("pdf.csv.gz", compression='gzip')
             saved = 1
         except PermissionError:
-            print("There was an error accessing 'pdf.csv' check that you have permissions and it isn't in use.")
+            print("There was an error accessing 'pdf.csv.gz' check that you have permissions and it isn't in use.")
             input("Press Enter to try again...")
+  
+###############################################################################
+### Main
+###############################################################################
             
 def main():
-    global tstart, tstart2, csvheader, cntftwords
+    global tstart, tstart2
     #Load
     timeload = time.time()
     rawdf = load_data()
@@ -420,12 +458,14 @@ def main():
     
     #Stage 1
     tstart = time.time()
-    print("Warning: This will take ~30m per 100k comments and cannot be paused. Ensure you have adequate time")
+    print("Warning: This will take ~10m per 10k comments (not totally linear) and cannot be paused. Ensure you have adequate time.")
     stage_1(rawdf)
+    
+    del rawdf
     
     #Find Features
     tft= time.time()
-    cntftwords = find_ft_words()    
+    ft_words = find_ft_words()    
     print("----")
     print("----")
     print("Time to select the ft word set: " + str((time.time() - tft))) 
@@ -436,15 +476,15 @@ def main():
     #Restart the csv
     virtcsv.seek(0)
     #TODO2 - fix this monstrous waste of memory
-        #Read from this, write directly to drive!
-    ##pd.read_csv("processeddf.csv", nrows=0)
+        #Could read from this, write directly to drive
+        ##pd.read_csv("processeddf.csv", nrows=0)
     ppdf = pd.read_csv(virtcsv)#, nrows=0) #.drop(columns=['Unnamed: 0'])
     virtcsv.seek(0)
-    csvheader = 0
+
     
     tstart2 = time.time()
     print("Stage 2 Starting:")
-    stage_2(ppdf)    
+    stage_2(ppdf,ft_words)    
     
     #Save
     #convert our virtual csv into a dataframe then save as a real csv.
@@ -456,31 +496,33 @@ def main():
     save()
     print("Saved csv in " + str((time.time() - tsave)) + "seconds")
     print("Complete! Ready for machine learning after only " + str((time.time() - tstart)/60) + "minutes!")
+
+###############################################################################
+### Process a single comment
+###############################################################################
+#
+# For use by the live classifier
     
 def proc_one_co(rawco,ft_words):
-    global csvheader, cntftwords,virtcsv, csv_writer
+    #Handle the virtcsv
+    global virtcsv, csv_writer
     virtcsv = StringIO()
     csv_writer = writer(virtcsv)
-    csvheader = 0
+    
     #Convert to a df
     ##TODO3 - do this the right way (have stage1 accept single raw comments)
-        ##rawdf = pd.DataFrame()
-        ##rawdf = rawdf.append(rawco, ignore_index=True)
     rawdf = pd.DataFrame([rawco])
     
     #Stage 1
     stage_1(rawdf)
     
-    cntftwords = Counter(ft_words.columns.tolist())
-    
     #Restart the csv
     virtcsv.seek(0)
     ppdf = pd.read_csv(virtcsv)#, nrows=0) #.drop(columns=['Unnamed: 0'])
     virtcsv.seek(0)
-    csvheader = 0
     
     #Stage 2
-    stage_2(ppdf)    
+    stage_2(ppdf,ft_words)    
     
     virtcsv.seek(0)
     pdf = pd.read_csv(virtcsv)
@@ -488,9 +530,9 @@ def proc_one_co(rawco,ft_words):
     return pdf
     
 if __name__ == "__main__":
-    #main()
-    print(proc_one_co(rawco,ft_words))
-    print(proc_one_co(rawco,ft_words))
+    main()
+    ##print(proc_one_co(rawco,ft_words))
+    ##print(proc_one_co(rawco,ft_words))
 
 
 
