@@ -1,12 +1,26 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sat Mar  2 11:03:41 2019
-
-@author: Angelo
-@description: Trains our classifier on processedco.csv and saves to classifier.sav
-    Call with flags for visualizations/debugging
-
+@author: u/Ambiwlans
+@general: SmarterAutoMod learns from old comment data/mod actions and can automatically
+    report/remove comments once trained.
+@description: Stage 3. Takes the processed data and trains a model to fit it (The actual machine learning portion). 
+    Fine tune in here (currently manual). Can also visualize performance on a number of metrics, print out interesting examples, etc.
+@credit: r/SpaceX mod team - Thanks to everyone who let me slack on mod duties while I made this
+    u/CAM-Gerlach - Tireless consultant, ML wizard
 """
+
+#TODO2 - better graphics. show default x-ticks on all graphs. better labels. more standardize text output
+#TODO2 - merge different graphing operations into one function/handle duplicate code better
+    # - show TR on LCs, allow multiple runs
+#TODO2 - can I be using warm_start = true?
+#TODO2 - Const block (or config) for what metrics to show?. Add ll metric?
+#TODO3 - confidence boosting implementation?
+#TODO3 - allow CVing between multiple data sets. (load a. load b. run graphs/tests on both simultaneously)    
+    # - requires updating d_p to allow multiple csv outputs
+#TODO4 - allow full control from config without entering code.
+#TODO5 - Autotuning hyper parameters
+#TODO7 - custom loss function other than mse. (REALLY complex upgrade)
+#TODO8 - switch to cPickle? joblib? (Rather minor improvements)    
 
 ###############################################################################
 ### Imports, Defines, Globals
@@ -17,179 +31,174 @@ import time
 import datetime
 import pickle
 import configparser
-#import os
-#import psutil
-#process = psutil.Process(os.getpid())
 
+#Tracking memory consumption (this method is unreliable in a full IDE)
+##import os
+##import psutil
+##process = psutil.Process(os.getpid())
+
+#Settings/Config
 config = configparser.ConfigParser()
 config.read('config.ini')
+default_params = {'n_estimators' : int(config['Training']['n_estimators']),
+                  'max_depth' : int(config['Training']['max_depth']),
+                  'max_features':int(config['Training']['max_features']),
+                  'min_samples_split':int(config['Training']['min_samples_split']),
+                  'n_jobs' : int(config['Training']['n_jobs']),
+                  'random_state' : int(config['Training']['random_state']) }
 
-#Math/datastructs/visualizations
+## super fast debug setting
+##default_params = {'n_estimators' : 25}
+
+#Math/datastructs
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from scipy import interp
+
+#Visualizations/graphs
+import matplotlib.pyplot as plt
 
 #Machine learning tools
 from sklearn import model_selection
 from sklearn import metrics
-#from sklearn import svm
 from sklearn.ensemble import RandomForestClassifier
 #from sklearn.feature_selection import SelectFromModel   #Only needed if I am going to use RF for feature selection
-
-#import dev_vis
+#from sklearn import svm                                 #Only needed to learn with an svm instead of an RF
 
 ###############################################################################
 ### Main
 ###############################################################################
-
-#Global settings
-#TODO2 - can I be using warm_start = true?
-
-#Optimized Mar 22 - 1000ftwrd
-#default_params = {'n_estimators' : 275, 'max_depth' : 50, 'max_features':20, 'min_samples_split':200, 'n_jobs' : -1, 'random_state' : 42 }
-#Optimized Mar 25 - 1000ftwrd
-default_params = {'n_estimators' : 310, 'max_depth' : 60, 'max_features':18, 'min_samples_split':25, 'n_jobs' : -1, 'random_state' : 42 }
-##Optimized Mar 25 - 2000ft
-#default_params = {'n_estimators' : 500, 'max_depth' : 110, 'max_features':18, 'min_samples_split':20, 'n_jobs' : -1, 'random_state' : 42 }
-
-#default_params = {'n_estimators' : 25}## fast testing purposes
+#
+# Manual tuning, data examination happens here
+# I have left some sample code to get started with.
+# CV testing and learning curves can take a LONG time (many hours)
 
 def main():
-    totalruntime = time.time()
-    print("")
-    print (str(datetime.datetime.now())) 
+    tstart = time.time()
+    
+    #'''Print a header (Useful if you're saving runs while training)
+    print ("\n" + str(datetime.datetime.now())) 
     print("""
-    Overnight CV run (round 2) with 2000ft words. Getting iffy results from our shady classifier.
+    Testing the Release Candidate...
                 
     """)
     print("Defaults: ")
     print(str(default_params))
-    print('drop_cols=["__p_removed","__score"]')
-    print("---")
-    print("")
+
+    print("---\n")
+    #'''
     
-    global thresholds#temp testing
-    load_data(drop_cols=["__p_removed","__score","__p_score"]) #drop columns that are somewhat misleading
+    #'''load our data (shortcut)
+    # Warning. This is a risky way to use data!!!
+    # Use globals to allow keeping things in memory between runs (large csvs take minutes to load)
+    global X_def; global Y_def    
+    if 'X_def' not in globals():
+        X_def, Y_def = load_data(drop_cols=["__p_removed","__score","__p_score"])
+    else:
+        print("Skipping DB load, already in memory.")
+    #'''
     
-    #WARNING - finding thresholds from this set to test on later will overfit the tested set.
-    clf, thresholds = one_run()
+    #Load our data (non-risky way, reloads csv each run)
+    #X_def, Y_def = load_data(drop_cols=["__p_removed","__score","__p_score"])
+    
+    #Split it
+    #WARNING - finding thresholds from this set to test on later will (slightly) overfit the tested set.
+    X_te, Y_te, X_tr, Y_tr = split_data(X_def,Y_def)
+    
+    #Quick fit to our training data and show some basic stats + a ROC
+    clf, thresholds = one_run(X_te, Y_te, X_tr, Y_tr)
     
     # Show important features (could we use more or less feature words?)
-    feature_importance(clf,print_num=250)
+    #feature_importance(X, clf, print_num=250)
     
-    #print_extreme_comments(clf)
-    #print_mistakes(clf, thresholds[1], 250,1,1) #thresholds[x] is threshold @ fpr = x%
+    # Shows comments that might be interesting to tune for (custom regex, or spot patterns in missed decisions)
+    #print_extreme_comments(X_te, clf)
+    #print_mistakes(X_te, Y_te, clf, thresholds[1], 250,1,1) #thresholds[x] is threshold @ fpr = x%
     
     #do just 1 CV
-    #cv_test('n_estimators', np.unique(np.geomspace(200,500,6,dtype=int)), num_runs=3)
+    #hyperparam_cv(X_te, Y_te, X_tr, Y_tr, 'n_estimators', np.unique(np.geomspace(200,500,6,dtype=int)), num_runs=3)
     
     
     '''Overnight test block ... use to vary multiple hyperparams
-    cv_test('n_estimators', np.unique(np.geomspace(100,750,6,dtype=int)),updates = 0)
-    cv_test('max_depth', np.unique(np.geomspace(20,150,6,dtype=int)), updates = 0)
-    cv_test('max_features', np.unique(np.geomspace(10,60,6,dtype=int)), updates = 0)
-    cv_test('min_samples_split', np.unique(np.geomspace(2,300,6,dtype=int)), updates = 0)
+    hyperparam_cv(X_te, Y_te, X_tr, Y_tr,'n_estimators', np.unique(np.geomspace(100,750,6,dtype=int)),updates = 0)
+    hyperparam_cv(X_te, Y_te, X_tr, Y_tr,'max_depth', np.unique(np.geomspace(20,150,6,dtype=int)), updates = 0)
+    hyperparam_cv(X_te, Y_te, X_tr, Y_tr,'max_features', np.unique(np.geomspace(10,60,6,dtype=int)), updates = 0)
+    hyperparam_cv(X_te, Y_te, X_tr, Y_tr,'min_samples_split', np.unique(np.geomspace(2,300,6,dtype=int)), updates = 0)
     #'''
     
     
-    '''
+    ''' Looking at the learning curve while varying hyperparameters ( to see if we can change the learning rate)
     clf = RandomForestClassifier(**default_params)
-    plot_learning_curves()
+    learning_curves(X_def, Y_def,clf)
     #can we increase the learning rate with more estimators? ... maybe.
     default_params['n_estimators'] = 400
     clf = RandomForestClassifier(**default_params)
-    plot_learning_curves()
+    learning_curves(X_def, Y_def,clf)
     #'''
     
     #'''#Todo2 - allow other split types... maybe doesn't matter much.
     #cv = model_selection.ShuffleSplit(n_splits=10, test_size=0.2, random_state=42)
-    #plot_ROC_Curves(clf, X, Y, cv=cv)
+    #plot_ROC_Curves(X_te, Y_te, X_tr, Y_tr, clf, X, Y, cv=cv)
     #'''
     
-    # Save the classifier to disk
-    #TODO2 switch to cPickle? joblib?
-    #TODO2 save the headers too
+    # Save the classifier and some meta data to disk
     ft = pd.read_csv("pdf.csv", nrows=0).drop(columns=['Unnamed: 0'])
-    ft_words = ft.drop(columns=ft.filter(like='__'))
+    ft_words = ft.drop(columns=ft.filter(like='__'))        #Technically a very small risk of a bug here if a ft_word has a __ in it.
+    ft_words = ft_words.columns.tolist()
     pickle.dump([clf,thresholds,ft_words], open('classifier.sav', 'wb'))
-    #config["Execution"]["thresholds"] = thresholds
-    #with open('config.ini', 'w') as configfile:
-    #    config.write(configfile)
-    print("Testing completed in " + str((time.time() - totalruntime)/60) + "minutes")
+    print("Testing completed in " + str((time.time() - tstart)/60) + "minutes")
     return
 
 ###############################################################################
 ### Load/split data
 ###############################################################################
 #
-# truncate_len - load a subset of the csv. 0 means no truncation
-# force_reload - bool forcing reload
+# filename - str - what csv to load?
+# truncate_len - int - load a subset of the csv. 0 means no truncation
+# dropcols - list of column names (str) to drop.
     
-def load_data(truncate_len=0,force_reload=0,drop_cols=[],rand_split=0):
-    #use globals
-    global processeddf; global X; global Y; global X_te; global X_tr; global Y_te; global Y_tr
-    
-    # Don't reload if db is still in memory from previous run
-    # Warning. This is a risky way to use data!!!
-    if 'processeddf' not in globals() or force_reload:
-        print("Loading data...")
-        tt = time.time()
-        processeddf = pd.read_csv("pdf.csv")
-        print("Loaded in " + str((time.time() - tt)) + "seconds")
-    else:
-        print("Skipping DB load, already in memory")
+def load_data(filename="pdf.csv.gz",truncate_len=0,drop_cols=[]):
+
+    print("Loading data...")
+    tt = time.time()
+    pdf = pd.read_csv(filename, compression='gzip')
+    print("Loaded " + str(len(pdf)) + "comments in " + str((time.time() - tt)) + "seconds.")
     
     # split data, toss index
-    X = processeddf.drop(columns=['__rem','Unnamed: 0'])
-    Y = processeddf['__rem']
+    X = pdf.drop(columns=['__rem','Unnamed: 0'])
+    Y = pdf['__rem']
         
     # Testing on a truncated set
     if truncate_len:
         X = X.iloc[:truncate_len]
         Y = Y.iloc[:truncate_len]
+        print("Truncating to most recent " + str(truncate_len) + "comments.")
 
-    # Testing with score
+    # Some columns might be undesirable, drop them.
     if drop_cols:
         X = X.drop(columns=drop_cols)
+        print("Dropping cols: " + str(drop_cols))
+            
     
-    if rand_split:
-        #Random test/train split
-        #Risk - may overfit without lots of random splits
-            # Imagine a chain of 10 identical stupid comments, 
-            # if this is trained on 2 and knows to remove the rest... it has info the real program won't have
-        X_tr, X_te, Y_tr, Y_te = model_selection.train_test_split(X,Y, test_size = .2, random_state = 42, stratify = Y)
-    else:
-        #Test/train split so that the test is the most recent 20% of entries
-        #Risk - may overfit to this dataset
-        #Benefit - more realistic test ... no chance to capture recent trends/threads
-        X_te = X.iloc[0:int(len(X)*0.2)]
-        X_tr = X.iloc[int(len(X)*0.2):] 
-        Y_te = Y.iloc[0:int(len(Y)*0.2)] 
-        Y_tr = Y.iloc[int(len(Y)*0.2):]
-        
-    print("----")
-    print("")
-    return
+    print("----\n")
+    return X, Y
     
 
 ###############################################################################
 ### Trial Run
 ###############################################################################
 
-def one_run(show_roc=1):
+def one_run(X_te, Y_te, X_tr, Y_tr, show_roc=1):
     tt = time.time()
-    print("Training our model on " + str(len(X)) + " comments (with " + str(len(X_te.columns)) + " features).")
+    print("Training our model on " + str(len(X_tr)) + " comments (with " + str(len(X_te.columns)) + " features).")
     
     #God speed magic machine learning algorithm.
     clf = RandomForestClassifier(**default_params)
     
-    # :( so sad that building a custom loss function in sklearn seems near impossible. mse will have to do. But the problem isn't symmetrical :/
-    #TODO3 - fix this
     clf = clf.fit(X_tr, Y_tr)
     print("Trained in " + str((time.time() - tt)) + "seconds")
     
-    ## Show some stats on our model.
+    # Show some stats on our model.
     y_pred = clf.predict(X_te)
     y_pred_proba = clf.predict_proba(X_te)
     fpr, tpr, thresholds = metrics.roc_curve(Y_te, y_pred_proba[:, 1])
@@ -205,15 +214,15 @@ def one_run(show_roc=1):
     print("Cur model ROCAUC score: " + str(metrics.roc_auc_score(Y_te, y_pred)))
     print("Cur model pAUC (max FPR = .1) score: " + str(metrics.roc_auc_score(Y_te, y_pred_proba[:, 1],max_fpr=.1)))
     print("Cur model pAUC (max FPR = .01) score: " + str(metrics.roc_auc_score(Y_te, y_pred_proba[:, 1],max_fpr=.01)))
-    print("TPR @ .01 FPR: " + str(mean_tpr[1]))
-    print("TPR @ .1 FPR: " + str(mean_tpr[10]))
+    print("TPR @ 1% FPR: " + str(mean_tpr[1]))
+    print("TPR @ target FPR (" + config['Training']['target_fpr'] + "%): " + str(mean_tpr[int(config['Training']['target_fpr'])]))
     
     #Print a basic ROC
     if show_roc:
         plt.figure(figsize=(7,7))
         plt.plot(fpr, tpr, lw=1)
         plt.plot([0, 1], [0, 1], linestyle='--', lw=2, color='r', alpha=.2)
-        plt.plot([0.1, 0.1], [0, 1], color='g', alpha=.2)
+        plt.plot([(int(config['Training']['target_fpr'])/100), (int(config['Training']['target_fpr'])/100)], [0, 1], color='g', alpha=.2)
         plt.plot([0.01, 0.01], [0, 1], color='black', alpha=.2)
         plt.xlim([-0.05, 1.05])
         plt.ylim([-0.05, 1.05])
@@ -227,17 +236,42 @@ def one_run(show_roc=1):
     return clf, mean_thresholds
 
 ###############################################################################
+### Split into TE,TR
+###############################################################################
+# Returns a split set
+#
+# On rand_split = 1:
+    #Risk - may overfit without lots of random splits
+        # Imagine a chain of 10 identical stupid comments, 
+        # if this is trained on 2 and knows to remove the rest... it has info the real program won't have
+# Sequential split (rand_split = 0):
+    #Test/train split so that the test is the most recent 20% of entries
+    #Risk - may overfit to this dataset
+    #Benefit - more realistic test ... no chance to capture recent trends/threads
+    
+def split_data(X,Y, test_size = .2, rand_split=0):
+    if rand_split:
+        X_tr, X_te, Y_tr, Y_te = model_selection.train_test_split(X,Y, test_size = test_size, random_state = 42, stratify = Y)
+    else:
+        X_te = X.iloc[0:int(len(X)*test_size)]
+        X_tr = X.iloc[int(len(X)*test_size):] 
+        Y_te = Y.iloc[0:int(len(Y)*test_size)] 
+        Y_tr = Y.iloc[int(len(Y)*test_size):]
+    return X_te, Y_te, X_tr, Y_tr
+
+###############################################################################
 ### Crossvalidation testing
 ###############################################################################
-
+#
 # Tuning hyperparamaters!
-
+#
 #cvhyperparam: n_estimators, max_depth, max_features, min_samples_split
 #cvparam_range: a range of values to try. ie: np.unique(np.geomspace(2,500,8,dtype=int))
+#
+#Returns the ideal value for the cv
 
-#Returns: pauccv
-def cv_test(cvhyperparam, cvparam_range, graphs=True, updates=True, num_runs=3):
-    print("---")
+def hyperparam_cv(X_te, Y_te, X_tr, Y_tr, cvhyperparam, cvparam_range, graphs=True, updates=True, num_runs=3):
+    print("----")
     print("Running CV testing for " + str(cvhyperparam) + "...")
     f1cv = np.zeros([len(cvparam_range)])
     #oobcv = np.zeros([len(cvparam_range)])
@@ -249,10 +283,11 @@ def cv_test(cvhyperparam, cvparam_range, graphs=True, updates=True, num_runs=3):
     cvtimes = np.zeros([len(cvparam_range)])
     params = default_params.copy()
     for zz in range(1,num_runs+1):
-        #TODO1 - should there be a shuffle something?
-        #X_tr, X_te, Y_tr, Y_te = model_selection.train_test_split(X,Y, test_size = .2, stratify = Y)
+        #TODO1 - should there be a shuffle here?
+        ##X_tr, X_te, Y_tr, Y_te = model_selection.train_test_split(X,Y, test_size = .2, stratify = Y)
         i = 0
         for testvals in cvparam_range:
+            #Refit the model for each setting of the hyperparameter
             tt = time.time()
             params[cvhyperparam] = testvals
             cvclf = RandomForestClassifier(**params)
@@ -260,6 +295,7 @@ def cv_test(cvhyperparam, cvparam_range, graphs=True, updates=True, num_runs=3):
             y_pred = cvclf.predict(X_te)
             y_pred_proba = cvclf.predict_proba(X_te)
             
+            #For reporting
             f1cv[i] = f1cv[i] + metrics.f1_score(Y_te, y_pred)
             #oobcv[i] = oobcv[i] + cvclf.oob_score_
             bscv[i] = bscv[i] + (1 - metrics.brier_score_loss(Y_te, y_pred_proba[:, 1]))
@@ -272,7 +308,6 @@ def cv_test(cvhyperparam, cvparam_range, graphs=True, updates=True, num_runs=3):
             #process.memory_info().rss
             i = i+1
             
-        
         if updates or zz == num_runs:
             #print updates each run
             print("Run #" + str(zz) + "/" + str(num_runs))
@@ -315,23 +350,19 @@ def cv_test(cvhyperparam, cvparam_range, graphs=True, updates=True, num_runs=3):
             
             print("----")
             print("")
+    print("To optimize for accuracy @FPR = " + config['Training']['target_fpr'] + "%: "+ str(cvhyperparam) + " should be set to " + str())
     return
-
-#'''
 
 ###############################################################################
 ### Print missed comments
 ###############################################################################
-
+#
 #clf - a trained classifier
 #count - how many sample comments to print
         #TODO2 - allow a 0 value here to print all comments...  or ppl just put a big number, w/e
 #fp,fn - boolflags to toggle printing false negs, false pos
 
-def print_mistakes(clf, threshold=.5, count=25,show_fp=1,show_fn=1):
-    
-
-    
+def print_mistakes(X_te, Y_te, clf, threshold=.5, count=25,show_fp=1,show_fn=1):    
     y_proba = clf.predict_proba(X_te)
     y_pred = (y_proba[:,1] >= threshold).astype(bool) # set threshold as 0.3
     
@@ -375,42 +406,35 @@ def print_mistakes(clf, threshold=.5, count=25,show_fp=1,show_fn=1):
     
     return
 
-def print_extreme_comments(clf):
+###############################################################################
+### Extreme Comments
+###############################################################################
+#
+# Shows the comments the bot is most confident in their classification
+    
+def print_extreme_comments(X, clf):
     
     rawdf = pd.read_csv("rawdf.csv", keep_default_na=False)
     
     y_probas = clf.predict_proba(X)[:, 1].tolist()
     
-    print("Shittiest comment of the past " + str(len(X)) + "(any) comments:")
+    print("Shittiest comment of the past " + str(len(X)) + " comments:")
     print(rawdf.iloc[y_probas.index(max(y_probas))]['score'])
     print(rawdf.iloc[y_probas.index(max(y_probas))]['author'])
     print(rawdf.iloc[y_probas.index(max(y_probas))]['comment'])
     print("https://www.reddit.com" + str(rawdf.iloc[y_probas.index(max(y_probas))]['permalink']))
     print("----")
     print("")
-    print("Most innocent comment of the past " + str(len(X)) + "(any) comments:")
+    print("Most innocent comment of the past " + str(len(X)) + " comments:")
     print(rawdf.iloc[y_probas.index(min(y_probas))]['score'])
     print(rawdf.iloc[y_probas.index(min(y_probas))]['author'])
     print(rawdf.iloc[y_probas.index(min(y_probas))]['comment'])
     print("https://www.reddit.com" + str(rawdf.iloc[y_probas.index(min(y_probas))]['permalink']))
     print("----")
     print("")
-    y_probas = clf.predict_proba(X_te)[:, 1].tolist()
-    print("Shittiest comment of the past " + str(len(X_te)) + "(test) comments:")
-    print(rawdf.iloc[y_probas.index(max(y_probas))]['score'])
-    print(rawdf.iloc[y_probas.index(max(y_probas))]['author'])
-    print(rawdf.iloc[y_probas.index(max(y_probas))]['comment'])
-    print("https://www.reddit.com" + str(rawdf.iloc[y_probas.index(max(y_probas))]['permalink']))
-    print("----")
-    print("")
-    print("Most innocent comment of the past " + str(len(X_te)) + "(test) comments:")
-    print(rawdf.iloc[y_probas.index(min(y_probas))]['score'])
-    print(rawdf.iloc[y_probas.index(min(y_probas))]['author'])
-    print(rawdf.iloc[y_probas.index(min(y_probas))]['comment'])
-    print("https://www.reddit.com" + str(rawdf.iloc[y_probas.index(min(y_probas))]['permalink']))
-    print("----")
-    print("")
+
     return
+
 ###############################################################################
 ### Learning Curves
 ###############################################################################
@@ -420,7 +444,7 @@ def print_extreme_comments(clf):
     
 #TODO1 - show training curves too
 #TODO1 - add option for averaging runs
-def plot_learning_curves(n_points=5,n_jobs=None):
+def learning_curves(X,Y,clf, n_points=5,n_jobs=None):
     
     train_sizes = [int(k) for k in len(X) * np.linspace(0.1, 1.0, n_points)] 
     
@@ -440,11 +464,6 @@ def plot_learning_curves(n_points=5,n_jobs=None):
     zz= 1 ##temp obviously.
     i = 0
     for train_size in train_sizes:
-        ##X_te = X.iloc[:int(train_size*0.2)]
-        ##Y_te = Y.iloc[:int(train_size*0.2)]
-        ##X_tr = X.iloc[int(train_size*0.2):train_size] 
-        ##Y_tr = Y.iloc[int(train_size*0.2):train_size]
-        
         X_te = X.iloc[:int(len(X)*0.2)]
         X_tr = X.iloc[int(len(X)*0.2):int((train_size * .8) + (len(X)*0.2))] 
         Y_te = Y.iloc[:int(len(X)*0.2)]
@@ -506,6 +525,12 @@ def plot_learning_curves(n_points=5,n_jobs=None):
     print("----")    
     return
 
+###############################################################################
+### ROC Curves
+###############################################################################
+#
+# Show ROC curves with a random selection to give a clearer idea of bias.
+    
 def plot_ROC_Curves(classifier, X, y, cv=None):
 
     cv = model_selection.StratifiedKFold(n_splits=6)
@@ -556,14 +581,19 @@ def plot_ROC_Curves(classifier, X, y, cv=None):
     print("TPR @ .05 FPR: " + str(mean_tpr[5]))
     print("TPR @ .1 FPR: " + str(mean_tpr[10]))
     print("TPR @ .3 FPR: " + str(mean_tpr[30]))
+    print("TPR @ target FPR (" + config['Training']['target_fpr'] + "): " + str(mean_tpr[int(config['Training']['target_fpr'])]))
     print('----')
     print('')
     return
 
-def feature_importance(clf,graph_num=50, print_num=2000):
+###############################################################################
+### Feature Importance
+###############################################################################
+#
+# Show the relative importance values of our features.    
     
+def feature_importance(X, clf,graph_num=50, print_num=2000):
     importances = clf.feature_importances_
-    ##std = np.std([tree.feature_importances_ for tree in clf.estimators_], axis=0)
     
     s = sorted(zip(importances, X.columns), reverse=True)
     svals = [i[0] for i in s]
@@ -577,7 +607,7 @@ def feature_importance(clf,graph_num=50, print_num=2000):
     # Plot the feature importances of the forest
     plt.figure(figsize=(12,7))
     plt.title("Feature importances")
-    plt.bar(range(graph_num), svals[:graph_num], color="r", align="center") ##yerr=std[indices][:graph_num]
+    plt.bar(range(graph_num), svals[:graph_num], color="r", align="center")
     plt.xticks(range(graph_num), snames[:graph_num], rotation='vertical')
     plt.margins(0.2)
     plt.xlim([-1, graph_num])
@@ -602,5 +632,5 @@ def feature_importance(clf,graph_num=50, print_num=2000):
     
     
     
-    
-main()
+if __name__ == "__main__":
+    main()
