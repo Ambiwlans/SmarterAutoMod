@@ -7,11 +7,14 @@
 @credit: r/SpaceX mod team - Thanks to everyone who let me slack on mod duties while I made this
     u/CAM-Gerlach - Tireless consultant, ML wizard
 """
-
+#TODO1 - BUG - Emotes not being captured?
 #TODO1 - tidy main, proc_one_co
     # rem unneeded virtcsv stuff
+#TODO1 - ask first when saving over existing file.
 
-#TODO2 - Allow/use custom regex matches    
+#TODO2 - REGEX for subreddit/username mentions, redditstyle shortlinks
+    # fix "Unable to find domain for: [important stuff](/r/spacex/comments/b29md0/elon_musk_on_twitter_testing_starship_heatshield/eir9pjz/)"
+#TODO2 - Allow/use custom regex matches. One-hot them.
 #TODO2 - Add verbose flag for debugging. Show comments at each stage of processing.
 #TODO2 - More Features
     # percentages (like %caps)
@@ -19,14 +22,16 @@
     # is parent comments a question?
     # more detailed caps info (1st char cap, all caps words)
     # try frequency values instead of raw counts of ft_words, or do both?
+        # Highly correllated data is OKish in RFs, but can introduce a bias
 #TODO2 - reorganize the stage2 virtual csv thing to save on memory (only important for like 1m + comments). Cur system is ugly
-#TODO3 - ask first when saving over existing file.
 #TODO3 - trim the counters every 25k comments for a speed boost?
 #TODO3 - clip the index columns rather than saving them?
-#TODO3 - switch feature word selection to use a RF or elastic loop rather than simple stats.... 
+#TODO3 - switch feature word selection to use a RF or elastic net/lasso rather than simple stats.... 
+        # could also include some words by raw rate (rather than the difference in rates) then cut down in learn. Or a blend
 #TODO3 - squeeze everything into uint8s? No point if it works fast enough already
 #TODO3 - Risk of bobbytables abuses (say _domain_twittercom in a comment to confuse bot) is pretty minor
-
+#TODO3 - Implement Automod as a feature (useless for subs without an advanced automod, costly, lots of code)
+    
 ###############################################################################
 ### Imports, Defines, Globals
 ###############################################################################
@@ -53,8 +58,6 @@ csv_writer = writer(virtcsv)
 import configparser
 config = configparser.ConfigParser()
 config.read('config.ini')
-
-#Const
 num_ft_words = int(config['Processing']['num_ft_words'])      #how many feature words to collect
 
 #Globals for finding our set of word features (ft_words)
@@ -451,9 +454,9 @@ def save():
 def main():
     global tstart, tstart2
     #Load
-    timeload = time.time()
+    tload = time.time()
     rawdf = load_data()
-    print("Loaded csv in " + str((time.time() - timeload)) + "seconds")
+    print("Loaded csv in " + str((time.time() - tload)) + "seconds")
     print("Processing " + str(len(rawdf))+ "comments...")
     
     #Stage 1

@@ -3,12 +3,15 @@
 @author: u/Ambiwlans
 @general: SmarterAutoMod learns from old comment data/mod actions and can automatically
     report/remove comments once trained.
-@description: Stage 1. Raw data collection. Takes several hours.
+@description: Stage 1. Raw data collection.
 @credit: r/SpaceX mod team - Thanks to everyone who let me slack on mod duties while I made this
     u/CAM-Gerlach - Tireless consultant, ML wizard
 """
 
 #TODO2 - add front end updating (adding in recent threads to the top of the df)
+#TODO2 - Ignore quarantined threads (not used in r/Spacex)
+#TODO2 - Add support for username/pass login + script that will return OAuth token
+
 #TODO3 - use psraw (pushshift ) or similar to go past the 1000 subm limit /r/pushshift/
 #TODO3 - logging?
 #TODO3 - Add an option to save on quit?

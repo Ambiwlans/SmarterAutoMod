@@ -1,78 +1,98 @@
 [Login]
+;Login to your account
+;Leaving your account password in plain text is bad. Don't use this. (Not implemented right now anyways)
 username = 
-password=
+password =
 
+;Registered bot information
+;How do you register a bot and get a refresh token? Check out: https://github.com/reddit-archive/reddit/wiki/OAuth2-Quick-Start-Example
 refresh_token=
 client_id=
 client_secret=
-user_agent=
+user_agent= SAM by /u/Ambiwlans
 
 
 [General]
 ;Your subreddit
 subreddit = SpaceX
-;Use existing datafile if it exists
-use_old_df = True
-;How many submissions to scan (100000 comments should provide a solid learning base)
-;Reddit's API does not allow you to go beyond 1000 submissions, I may code a work around in some future version but 1000 submissions is pretty good
-;100k raw comments  is ~50mb
-num_submissions = 1000
-;This allows you to ignore threads with special rules by title or name. Plain text or REGEX matching. Case sensitive. No flair is matched with 'None'
-ignore_submission_title = (Party Thread|Official Launch|META|Sources Required|Media Thread|Discusses|Moderator|Mod|Update Thread|Updates Thread)
-ignore_submission_flair = (relaxed|removed|Removed|META|Meta|Media|Party|Sources Required|Live)
 
-;Ignore users that don't follow normal rules (like bots| mods?)
+;Use existing datafile if it exists (allows resuming comment scrapeing)
+use_old_df = True
+
+;How many submissions to scan (>75000 comments should provide a solid learning base) 
+;The maximum allowed by Reddit's API (1000) is suggested
+;File should be under 20MB
+num_submissions = 1000
+
+;This allows you to ignore threads with special rules by title or name. Plain text or REGEX matching. Case sensitive. Unflaired is matched with 'None'
+ignore_submission_title = (Party Thread|Official Launch|META|Sources Required|Media Thread|Discusses|Moderator|Mod|Update Thread|Updates Thread)
+ignore_submission_flair = (relaxed|removed|Removed|META|Meta|Media|Party|Sources Required|Live|Fools)
+
+;Ignore users that don't follow normal rules (like bots, and maybe mods)
 ignore_user = (Decronym|ElongatedMuskrat|TweetPoster|TweetsInCommentsBot|InstagramMirror|TotesMessenger|Totes_Meta_Bot|SpaceXMirrorBot)
 
-;Ignore late comments to posts (rarely modded) in training in hours after post
+;Ignore late comments to posts (typically not well policed) in training. # of hours after post
 ignore_late_comment_age = 96
-;Ignore recent comments in hours for training (mods haven't had a chance to check comments made in the past 10 seconds| don't train on it)
+;Ignore recent comments (in hours) for training (mods haven't had a chance to check comments made in the past 10 seconds| don't train on it)
 ignore_recent_submission_age = 48
-;Ignore dead threads and super heavy threads (typically not well policed)
+;Ignore dead threads and super heavy threads (typically not well policed) by number of comments
 ignore_min_co = 10
 ignore_max_co = 1000
 
 ;Ignore certain comments by content (to allow automod to catch with notifications)
-;Use: r/SpaceX ignores ITAR violations and a couple bots in order for automod to notify us of these comments
-;You could also just put any automod catches in here to let automod deal with them.... This only accepts a single regex string though, so lots of | ors
-;Example: (fuck ze mods|fuck ze other mods)
-ignore_comment_content = (approved supplier list|quality clause attachment for purchase orders|returnable packaging standard|spacex documentation checklist|supplier information for spacex vendors|supplier information for all spacex vendors|supplier manual|supplier request form|supplier shipping packaging and preservation|supplier survey form|RemindMe)
+;Use: r/SpaceX ignores ITAR violations and a couple bots (like totesmeta) in order for automod to notify us of these comments for us to handle
+;You could also just put any automod catches in here to let automod deal with to allow custom replies.... This only accepts a single regex string though, so lots of | ors
+;Example: (fuck ze mods|fuck ze other mods|RemindMe)
+ignore_comment_content = RemindMe
+
 
 [Processing]
-
-;Allows you to ensure the machine finds certain regex matches in comments.
-;Useful for colocations, complex regex or multi-token strings. Single words are found already
+;Allows you to ensure the machine finds certain regex matches in comments. (not implemented)
+;Useful for word clusters, colocations, complex regex or multi-token strings. Single words are found already but can be one-hotted by putting them in here.
 ;Note: These can dramatically slow down processing, use sparingly.
-;Example : "need a bigger","mass effect", "fly safe", "?m(u|e)rica!?", "checks out"
-;custom_regex_matches = "need a bigger","mass effect", "fly safe", "?m(u|e)rica!?", "checks out", "bouncy castle", "mark watney","James Cameron","educate yourself","possibly go wrong", "troll________________", "fanboi_____________", "you suck", "!______",do you even, trim 3x repeats into 2,
+custom_regex_matches = "need a bigger","mass effect", "fly safe", "?m(u|e)rica!?", "checks out", "bouncy castle", "mark watney","James Cameron","educate yourself","possibly go wrong","do you even","B\d\d\d\d"
 
-;How many feature words to look at 500~2500 is best but expect to take up 2MB per 1000 comments collected @500| 10MB @2500. Learning time will also increase slightly
+;How many feature words to look at. 
+;Increasing this will increase file sizes and processing time for relatively minor gains. 1000 is fairly balanced.
 ;Max suggestion is the number of comments/50 ... comments/100 is probably decent (the hyperparameters are tuned for 1000)
 num_ft_words = 1000
 
-;You can try stemming if you want. 
-;stemming = False
+;Turn on stemming (not implemented)
+stemming = False
+
 
 [Training]
+;Note:  Most of the features in train.py need to be enabled by modifying its 'main' function. If you just want it to go, there is no need to modify the code.
 
+;How many threads to train with. -1 for all available
+n_jobs = -1
+
+;What FPR are you targetting/accepting? (Only used for readouts during manual tuning)
+;Integer 1~99
+target_fpr = 10
+
+;Default hyperparameters. Do not touch unless you know what you're doing
+;Optimized for 1000 ft_words on r/SpaceX. Roughly double the estimators and depth with double the words.
+n_estimators = 310
+max_depth = 60
+max_features = 18
+min_samples_split = 25
+random_state = 42
+
+; Alternative set optimized for 2000 ft_words.
+;n_estimators = 500
+;max_depth = 110
+;max_features = 18
+;min_samples_split = 20
+;random_state = 42
 
 [Execution]
-;ROUGHLY what FPR you are accepting. This system will likely overreport for the few few hundred comments
+;ROUGHLY what FPR you are accepting. This system will likely overreport so you'll need to adjust these. Start low and increase them
 ;Int 1~99
 report_fpr = 5
 remove_fpr = 1
 
-;Hyperparameters. Do not touch unless you know what you're doing
-n_estimators=0
-max_depth=0
-min_samples_split=0
-min_samples_leaf=0
-max_leaf_nodes=0
-min_weight_fraction_leaf=0
 
 [Debug]
-;Print out more errors
+;Print out more errors during data_collection
 verbose=True
-
-;How much data (#comments) should be processed/trained on (smaller subsets to test faster). 0 = all data available
-data_size=0
