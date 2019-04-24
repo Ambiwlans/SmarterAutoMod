@@ -8,6 +8,9 @@
     u/CAM-Gerlach - Tireless consultant, ML wizard
 """
 
+#TODO1 - useful autoremove notification
+    # - use the same smart format setup as toolbox
+    # - multiline or just n
 #TODO2 - add front end updating (adding in recent threads to the top of the df)
 #TODO2 - Ignore quarantined threads (not used in r/Spacex)
 #TODO2 - Add support for username/pass login + script that will return OAuth token

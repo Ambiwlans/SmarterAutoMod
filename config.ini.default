@@ -87,12 +87,62 @@ random_state = 42
 ;random_state = 42
 
 [Execution]
-;ROUGHLY what FPR you are accepting. This system will likely overreport so you'll need to adjust these. Start low and increase them
+;ROUGHLY what FPR you are willing to accept on reports, removals. 
+;Note: This system will very likely overreport so you'll need to adjust these. Start low and increase them
 ;Int 1~99
 report_fpr = 5
 remove_fpr = 1
 
+;Sets classifier.py to only show outcomes in console and not actually do anything in the subreddit.
+;Start with this on to ensure you're happy with your settings before going live
+test_mode = True
+
+;Will report at both thresholds, NEVER REMOVING comments and instead simply giving a different message for their confidence levels.
+;Useful low risk setting to use the bot on. 
+report_only_mode = True
+
+;Do you want to send a removal notice to people who have had comments removed by the bot?
+send_removal_notice = True
+
+;Sends the mod team a notification of action taken to help catch false positives
+send_screening_notice = True
+;User to send all notifications to. Basically spam catch account. This is required since you cannot send mail to the subreddit as a mod without it getting put in 'mod discussions' instead of 'mod mail'
+screening_workaround_user = stupidworkaround
+
+;The removal notice to sent to the user
+; Link to the comment: {{permalink}}
+; Subreddit name: {{subreddit}}
+; Comment body: {{body}}
+; Thread Title: {{title}}
+; Comment author: {{author}} 
+; Conficence level: {{conf}}
+; Newline: {{nl}}
+removal_notice = Wow, {{author}}. At no point in your [rambling, incoherent response]({{permalink}}) were you even close to anything that could be considered a rational thought. Everyone in r/{{subreddit}} is now dumber for having listened to it. I award you no points, and may God have mercy on your soul.
+
+;The notice sent to the modteam (Actually sends messages from subreddit to screening_workaround_user to avoid messages getting stuck in 'mod discussions')
+screening_notice = BEEP BOOP. [Shitpost]({{permalink}}) by /u/{{author}} detected and destroyed! {{nl}}{{nl}}Confidence Level: {{conf}}{{nl}}{{nl}}Body: {{body}}
+
+;Show all comments in console readout (vs just showing removed/reported comments)
+show_all = True
 
 [Debug]
 ;Print out more errors during data_collection
-verbose=True
+verbose = True
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
