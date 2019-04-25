@@ -18,7 +18,6 @@
 #TODO3 - allow CVing between multiple data sets. (load a. load b. run graphs/tests on both simultaneously)    
     # - requires updating d_p to allow multiple csv outputs
 #TODO4 - allow full control from config without entering code.
-#TODO5 - Autotuning hyper parameters
 #TODO7 - custom loss function other than mse. (REALLY complex upgrade)
 #TODO8 - switch to cPickle? joblib? (Rather minor improvements)    
 
@@ -79,7 +78,7 @@ def main():
     #'''Print a header (Useful if you're saving runs while training)
     print ("\n" + str(datetime.datetime.now())) 
     print("""
-    Testing the Release Candidate... with 5000ft words!
+    Hyper Parameter autotuning for 5k ft_words.
                 
     """)
     print("Defaults: ")
@@ -120,10 +119,12 @@ def main():
     
     
     '''Overnight test block ... use to vary multiple hyperparams
-    hyperparam_cv(X_te, Y_te, X_tr, Y_tr,'n_estimators', np.unique(np.geomspace(100,750,6,dtype=int)),updates = 0)
-    hyperparam_cv(X_te, Y_te, X_tr, Y_tr,'max_depth', np.unique(np.geomspace(20,150,6,dtype=int)), updates = 0)
-    hyperparam_cv(X_te, Y_te, X_tr, Y_tr,'max_features', np.unique(np.geomspace(10,60,6,dtype=int)), updates = 0)
-    hyperparam_cv(X_te, Y_te, X_tr, Y_tr,'min_samples_split', np.unique(np.geomspace(2,300,6,dtype=int)), updates = 0)
+    # Will run forever. When ready, stop the program and examine the variables, copy them into config
+    while 1:
+        default_params['n_estimators'] = hyperparam_cv(X_te, Y_te, X_tr, Y_tr,'n_estimators', np.unique(np.geomspace((.75 *default_params['n_estimators']),(1.5 * default_params['n_estimators']),5,dtype=int)), updates = 0)
+        default_params['max_depth'] = hyperparam_cv(X_te, Y_te, X_tr, Y_tr,'max_depth', np.unique(np.geomspace((.75 *default_params['max_depth']),(1.5 * default_params['max_depth']),5,dtype=int)), updates = 0)
+        default_params['max_features'] = hyperparam_cv(X_te, Y_te, X_tr, Y_tr,'max_features', np.unique(np.geomspace((.75 *default_params['max_features']),(1.5 * default_params['max_features']),5,dtype=int)), updates = 0)
+        default_params['min_samples_split'] = hyperparam_cv(X_te, Y_te, X_tr, Y_tr,'min_samples_split', np.unique(np.geomspace((.75 *default_params['min_samples_split']),(1.5 * default_params['min_samples_split']),5,dtype=int)), updates = 0)
     #'''
     
     
@@ -366,8 +367,10 @@ def hyperparam_cv(X_te, Y_te, X_tr, Y_tr, cvhyperparam, cvparam_range, graphs=Tr
             
             print("----")
             print("")
-    print("To optimize for accuracy @FPR = " + config['Training']['target_fpr'] + "%: "+ str(cvhyperparam) + " should be set to " + str())
-    return
+    
+    print("To optimize for pAUC (.1): "+ str(cvhyperparam) + " should be set to " + str(cvparam_range[np.argmax(pauccv)]) + " giving a score of " + str(max(pauccv) / zz))
+    ##print("To optimize for accuracy @FPR = " + config['Training']['target_fpr'] + "%: "+ str(cvhyperparam) + " should be set to " + str())
+    return cvparam_range[np.argmax(pauccv)]
 
 ###############################################################################
 ### Print missed comments
