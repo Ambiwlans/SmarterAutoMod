@@ -13,7 +13,6 @@
 #TODO2 - show what key words/features appeared in the comment
     # - http://blog.datadive.net/random-forest-interpretation-with-scikit-learn/
 #TODO2 - logging to file option
-#TODO2 - error handling. For 404 errors etc.
 #TODO2 - Collect stats
     # - make stats available on reddit (wiki page) for mods
     # - via pm to bot?
@@ -43,6 +42,9 @@ coftwords = Counter()
 
 #Machine learning tools
 from sklearn.ensemble import RandomForestClassifier
+
+#Praw
+from prawcore.exceptions import RequestException
 
 #Other py files
 from login import login
@@ -110,130 +112,141 @@ co_count = 0
 co_record = deque([], 1000)
 
 for co in subreddit.stream.comments():
-    
-    ###########################################################################
-    # Collect a comment
-    ###########################################################################
-    
-    p = co.parent()
-    author = co.author
-    try:
-        author_karma = author.comment_karma
-        author_age = co.created_utc - author.created_utc
-    except:
-        author_karma = 0
-        author_age = 0    
-    
-    s = co.submission    
-    rawco = pd.Series({'removed':co.removed,
-                     'comment':co.body.encode('ascii', 'ignore').decode(), 
-                     'score':co.score,
-                     'permalink':co.permalink, 
-                     'time':co.created_utc,
-                     'author':author,
-                     'author_karma':author_karma,
-                     'author_age':author_age,
-                     'top_lev':int(co.parent_id[0:2] == 't3'), #'t3' means parent is a submission, not comment
-                     'p_removed':p.removed,
-                     'p_score':p.score,
-                     'subm_fullname':s.name,
-                     'subm_title':s.title.encode('ascii', 'ignore').decode(),
-                     'subm_score':s.score,
-                     'subm_approved_at_utc':s.approved_at_utc,
-                     'subm_num_co':s.num_comments})
-    
-    ###########################################################################
-    #Skip invalid comments
-    ###########################################################################
-    
-    ignore_message = ""
-    #ignore repeats (reddit bug)
-    if rawco.permalink in co_record:
-        ignore_message = "Comment " + str(rawco.permalink) + "has already been processed."
-    else:
-        co_record.appendleft(rawco.permalink)
-        
-    #Ignore submissions
-    if(re.search(config['General']['ignore_submission_title'],s.title)):
-        ignore_message = ("Ignored by title: \"" + s.title +"\"")
-    if(re.search(config['General']['ignore_submission_flair'],str(s.link_flair_text))):
-        ignore_message = ("Ignored by flair: \"" + s.title +"\"")
-    if s.approved_at_utc is None:
-        ignore_message = "Ignoring not yet approved thread"
-    #ignore comments
-    if(re.search(config['General']['ignore_user'],str(co.author))):
-        ignore_message = "Ignored comment by user"
-    if(re.search(config['General']['ignore_comment_content'],str(co.body))):
-        ignore_message = ("Ignored comment by content: \"" + co.body +"\"")
-    if ignore_message != "":
-        if config['Debug']['verbose']: print(ignore_message)
-        continue
-    co_count += 1
-    
-    ###########################################################################
-    # Process comment
-    ###########################################################################
-    pco = proc_one_co(rawco,ft_words)
-    pco = pco.drop(columns=["__rem","__p_removed","__score","__p_score"])
-    
-    #check the pco with our classifier
-    y_proba = clf.predict_proba(list(pco.values.reshape(1,-1)))
-    
-    ###########################################################################
-    # Handle comment, Printouts
-    ###########################################################################
-    #
-    # Report or removed based on thresholds in config file.
-    
-    # Print each comment.
-    # If bad, report/remove it
-    print("Elapsed time: " + str(int((time.time() - tstart)/86400)) + "d, " +
-          str(int(((time.time() - tstart) % 86400)/3600)) + "h, " +
-          str(int(((time.time() - tstart) % 3600)/60)) + "m")
-    print("Comment #: " + str(co_count))
-    print("Probability: " + str(y_proba[0][0]))
-    print("Comment Score: " + str(co.score))
-    print("Author: " + str(co.author))
-    print("https://www.reddit.com" + str(co.permalink))
-    print("Body: " + str(co.body))
-    if y_proba[0][1] >= thresholds[int(config["Execution"]['remove_fpr'])]:
-        # Remove threshold comment!!!
-        if (config['Execution']['test_mode']) == "True":
-            #TEST MODE - no reddit actions
-            print('\x1b[1;31;41m' + 'REMOVE THRESHOLD!' + '\x1b[0m')
-        else:
-            if (config['Execution']['report_only_mode']) == "True":
-                #REPORT ONLY MODE - report instead of removing
-                co.report("BeepBoop -  Robot REALLY no like! (Conf:" + str(get_conf(y_proba[0][1],thresholds)) + "%)")
-                print('\x1b[1;31;41m' + 'REMOVE THRESHOLD!' + '\x1b[0m' + ' ... reporting.')
-            else:
-                #NORMAL MODE - remove bad comment
-                co.mod.remove()
-                print('\x1b[1;31;41m' + 'REMOVED!' + '\x1b[0m')
-                if (config['Execution']['send_removal_notice']) == "True":
-                    print("Sending removal notification...")
-                    co.mod.send_removal_message(reformat_notice(rawco,0,str(get_conf(y_proba[0][1],thresholds))), title='Removal Notification', type='private')
-                if (config['Execution']['send_screening_notice']) == "True":
-                    r.redditor(config['Execution']['screening_workaround_user']).message('Removal Notification', reformat_notice(rawco,1,str(get_conf(y_proba[0][1],thresholds))),from_subreddit=config['General']['subreddit'])
-        print("Confidence level of violation: " + str(get_conf(y_proba[0][1],thresholds)))        
+    #Keep trying every 5 minutes if there are connection issues to avoid downtime.
+    keeptrying = True
+    while keeptrying:
+        keeptrying = False
+        try:
             
-    elif y_proba[0][1] >= thresholds[int(config["Execution"]['report_fpr'])]:
-        # Report threshold comment!
-        if (config['Execution']['test_mode']) == "True":
-            #TEST MODE - no reddit actions
-            print('\x1b[2;30;43m' + 'REPORT THRESHOLD!' + '\x1b[0m')
-        else:
-            #NORMAL MODE - report bad comment
-            co.report("BeepBoop -  Robot no like! (Conf:" + str(get_conf(y_proba[0][1],thresholds)) + "%)")
-            print('\x1b[2;30;43m' + 'REPORTED!' + '\x1b[0m')
-        print("Confidence level of violation: " + str(get_conf(y_proba[0][1],thresholds)) + "%")
-    else:
-        # Good comment - no actions required
-        if (config['Execution']['show_all']) == "True":
-            print('\x1b[1;37;42m' + 'ACCEPTED!' + '\x1b[0m')
-            print("Confidence level of violation: " + str(get_conf(y_proba[0][1],thresholds)))
-    print("---")
-    
+            ###########################################################################
+            # Collect a comment
+            ###########################################################################
+            
+            p = co.parent()
+            author = co.author
+            try:
+                author_karma = author.comment_karma
+                author_age = co.created_utc - author.created_utc
+            except:
+                author_karma = 0
+                author_age = 0    
+            
+            s = co.submission    
+            rawco = pd.Series({'removed':co.removed,
+                             'comment':co.body.encode('ascii', 'ignore').decode(), 
+                             'score':co.score,
+                             'permalink':co.permalink, 
+                             'time':co.created_utc,
+                             'author':author,
+                             'author_karma':author_karma,
+                             'author_age':author_age,
+                             'top_lev':int(co.parent_id[0:2] == 't3'), #'t3' means parent is a submission, not comment
+                             'p_removed':p.removed,
+                             'p_score':p.score,
+                             'subm_fullname':s.name,
+                             'subm_title':s.title.encode('ascii', 'ignore').decode(),
+                             'subm_score':s.score,
+                             'subm_approved_at_utc':s.approved_at_utc,
+                             'subm_num_co':s.num_comments})
+            
+            ###########################################################################
+            #Skip invalid comments
+            ###########################################################################
+            
+            ignore_message = ""
+            #ignore repeats (reddit bug)
+            if rawco.permalink in co_record:
+                ignore_message = "Comment " + str(rawco.permalink) + " has already been processed."
+            else:
+                co_record.appendleft(rawco.permalink)
+                
+            #Ignore submissions
+            if(re.search(config['General']['ignore_submission_title'],s.title)):
+                ignore_message = ("Ignored by title: \"" + s.title +"\"")
+            if(re.search(config['General']['ignore_submission_flair'],str(s.link_flair_text))):
+                ignore_message = ("Ignored by flair: \"" + s.title +"\"")
+            if s.approved_at_utc is None:
+                ignore_message = "Ignoring not yet approved thread"
+            #ignore comments
+            if(re.search(config['General']['ignore_user'],str(co.author))):
+                ignore_message = "Ignored comment by user"
+            if(re.search(config['General']['ignore_comment_content'],str(co.body))):
+                ignore_message = ("Ignored comment by content: \"" + co.body +"\"")
+            if ignore_message != "":
+                if config['Debug']['verbose']: print(ignore_message)
+                continue
+            co_count += 1
+            
+            ###########################################################################
+            # Process comment
+            ###########################################################################
+            pco = proc_one_co(rawco,ft_words)
+            pco = pco.drop(columns=["__rem","__p_removed","__score","__p_score"])
+            
+            #check the pco with our classifier
+            y_proba = clf.predict_proba(list(pco.values.reshape(1,-1)))
+            
+            ###########################################################################
+            # Handle comment, Printouts
+            ###########################################################################
+            #
+            # Report or removed based on thresholds in config file.
+            
+            # Print each comment.
+            # If bad, report/remove it
+            print("Elapsed time: " + str(int((time.time() - tstart)/86400)) + "d, " +
+                  str(int(((time.time() - tstart) % 86400)/3600)) + "h, " +
+                  str(int(((time.time() - tstart) % 3600)/60)) + "m")
+            print("Comment #: " + str(co_count))
+            print("Probability: " + str(y_proba[0][0]))
+            print("Comment Score: " + str(co.score))
+            print("Author: " + str(co.author))
+            print("https://www.reddit.com" + str(co.permalink))
+            print("Body: " + str(co.body))
+            if y_proba[0][1] >= thresholds[int(config["Execution"]['remove_fpr'])]:
+                # Remove threshold comment!!!
+                if (config['Execution']['test_mode']) == "True":
+                    #TEST MODE - no reddit actions
+                    print('\x1b[1;31;41m' + 'REMOVE THRESHOLD!' + '\x1b[0m')
+                else:
+                    if (config['Execution']['report_only_mode']) == "True":
+                        #REPORT ONLY MODE - report instead of removing
+                        co.report("BeepBoop -  Robot REALLY no like! (Conf:" + str(get_conf(y_proba[0][1],thresholds)) + "%)")
+                        print('\x1b[1;31;41m' + 'REMOVE THRESHOLD!' + '\x1b[0m' + ' ... reporting.')
+                    else:
+                        #NORMAL MODE - remove bad comment
+                        co.mod.remove()
+                        print('\x1b[1;31;41m' + 'REMOVED!' + '\x1b[0m')
+                        if (config['Execution']['send_removal_notice']) == "True":
+                            print("Sending removal notification...")
+                            co.mod.send_removal_message(reformat_notice(rawco,0,str(get_conf(y_proba[0][1],thresholds))), title='Removal Notification', type='private')
+                        if (config['Execution']['send_screening_notice']) == "True":
+                            r.redditor(config['Execution']['screening_workaround_user']).message('Removal Notification', reformat_notice(rawco,1,str(get_conf(y_proba[0][1],thresholds))),from_subreddit=config['General']['subreddit'])
+                print("Confidence level of violation: " + str(get_conf(y_proba[0][1],thresholds)))        
+                    
+            elif y_proba[0][1] >= thresholds[int(config["Execution"]['report_fpr'])]:
+                # Report threshold comment!
+                if (config['Execution']['test_mode']) == "True":
+                    #TEST MODE - no reddit actions
+                    print('\x1b[2;30;43m' + 'REPORT THRESHOLD!' + '\x1b[0m')
+                else:
+                    #NORMAL MODE - report bad comment
+                    co.report("BeepBoop -  Robot no like! (Conf:" + str(get_conf(y_proba[0][1],thresholds)) + "%)")
+                    print('\x1b[2;30;43m' + 'REPORTED!' + '\x1b[0m')
+                print("Confidence level of violation: " + str(get_conf(y_proba[0][1],thresholds)) + "%")
+            else:
+                # Good comment - no actions required
+                if (config['Execution']['show_all']) == "True":
+                    print('\x1b[1;37;42m' + 'ACCEPTED!' + '\x1b[0m')
+                    print("Confidence level of violation: " + str(get_conf(y_proba[0][1],thresholds)))
+            print("---")
+        except RequestException:
+            time.sleep(300)
+            print("Connection error. Waiting 5 minutes before trying again.")
+            keeptrying = True
+        except KeyboardInterrupt:
+            print("Exiting...")
+            sys.exit(0)
     
     
     
