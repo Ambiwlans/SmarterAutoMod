@@ -91,7 +91,7 @@ if r.user.me() == None:
 subreddit = r.subreddit(config['General']['subreddit'])     # read comments from sub in config    
 
 #load and continue from existing csv
-if config['General']['use_old_df']:
+if config['General']['use_old_df'] == "True":
     try:
         rawdf = pd.read_csv("rawdf.csv.gz", compression='gzip', keep_default_na=False)
         rawdf = rawdf.drop(columns=['Unnamed: 0'])
@@ -157,7 +157,7 @@ for s in subreddit.new(limit=int(config['General']['num_submissions']),params=co
             ignore_message = ("Ignored recent: \"" + s.title +"\"")
         
         if ignore_message != "":
-            if config['Debug']['verbose']: print(ignore_message)
+            if config['Debug']['verbose'] == "True": print(ignore_message)
             continue
             
         s_count = s_count + 1

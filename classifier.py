@@ -9,6 +9,7 @@
 """
 
 #TODO2 - switch to more fine tuneable thresholds (99.9%)
+#TODO2 - move drop_cols to config
 #TODO2 - show what key words/features appeared in the comment
     # - http://blog.datadive.net/random-forest-interpretation-with-scikit-learn/
 #TODO2 - logging to file option
@@ -105,8 +106,6 @@ if r.user.me() == None:
  
 subreddit = r.subreddit(config['General']['subreddit'])
 
-subreddit.message('test','test?')
-
 co_count = 0
 co_record = deque([], 1000)
 
@@ -199,11 +198,11 @@ for co in subreddit.stream.comments():
     print("Body: " + str(co.body))
     if y_proba[0][1] >= thresholds[int(config["Execution"]['remove_fpr'])]:
         # Remove threshold comment!!!
-        if bool(config['Execution']['test_mode']) == True:
+        if (config['Execution']['test_mode']) == "True":
             #TEST MODE - no reddit actions
             print('\x1b[1;31;41m' + 'REMOVE THRESHOLD!' + '\x1b[0m')
         else:
-            if bool(config['Execution']['report_only_mode']) == True:
+            if (config['Execution']['report_only_mode']) == "True":
                 #REPORT ONLY MODE - report instead of removing
                 co.report("BeepBoop -  Robot REALLY no like! (Conf:" + str(get_conf(y_proba[0][1],thresholds)) + "%)")
                 print('\x1b[1;31;41m' + 'REMOVE THRESHOLD!' + '\x1b[0m' + ' ... reporting.')
@@ -211,23 +210,26 @@ for co in subreddit.stream.comments():
                 #NORMAL MODE - remove bad comment
                 co.mod.remove()
                 print('\x1b[1;31;41m' + 'REMOVED!' + '\x1b[0m')
-                if bool(config['Execution']['send_removal_notice']) == True:
+                if (config['Execution']['send_removal_notice']) == "True":
                     print("Sending removal notification...")
                     co.mod.send_removal_message(reformat_notice(rawco,0,str(get_conf(y_proba[0][1],thresholds))), title='Removal Notification', type='private')
-                if bool(config['Execution']['send_screening_notice']) == True:
+                if (config['Execution']['send_screening_notice']) == "True":
                     r.redditor(config['Execution']['screening_workaround_user']).message('Removal Notification', reformat_notice(rawco,1,str(get_conf(y_proba[0][1],thresholds))),from_subreddit=config['General']['subreddit'])
         print("Confidence level of violation: " + str(get_conf(y_proba[0][1],thresholds)))        
             
     elif y_proba[0][1] >= thresholds[int(config["Execution"]['report_fpr'])]:
         # Report threshold comment!
-        if bool(config['Execution']['test_mode']) == False:
+        if (config['Execution']['test_mode']) == "True":
+            #TEST MODE - no reddit actions
+            print('\x1b[2;30;43m' + 'REPORT THRESHOLD!' + '\x1b[0m')
+        else:
             #NORMAL MODE - report bad comment
             co.report("BeepBoop -  Robot no like! (Conf:" + str(get_conf(y_proba[0][1],thresholds)) + "%)")
             print('\x1b[2;30;43m' + 'REPORTED!' + '\x1b[0m')
         print("Confidence level of violation: " + str(get_conf(y_proba[0][1],thresholds)) + "%")
     else:
         # Good comment - no actions required
-        if bool(config['Execution']['show_all']):
+        if (config['Execution']['show_all']) == "True":
             print('\x1b[1;37;42m' + 'ACCEPTED!' + '\x1b[0m')
             print("Confidence level of violation: " + str(get_conf(y_proba[0][1],thresholds)))
     print("---")

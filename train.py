@@ -62,7 +62,7 @@ import matplotlib.pyplot as plt
 from sklearn import model_selection
 from sklearn import metrics
 from sklearn.ensemble import RandomForestClassifier
-#from sklearn.feature_selection import SelectFromModel   #Only needed if I am going to use RF for feature selection
+#from sklearn.feature_selection import SelectFromModel   #Only needed to use RF for feature selection
 #from sklearn import svm                                 #Only needed to learn with an svm instead of an RF
 
 ###############################################################################
@@ -79,7 +79,7 @@ def main():
     #'''Print a header (Useful if you're saving runs while training)
     print ("\n" + str(datetime.datetime.now())) 
     print("""
-    Testing the Release Candidate...
+    Testing the Release Candidate... with 5000ft words!
                 
     """)
     print("Defaults: ")
@@ -142,9 +142,25 @@ def main():
     #'''
     
     # Save the classifier and some meta data to disk
-    ft = pd.read_csv("pdf.csv", nrows=0).drop(columns=['Unnamed: 0'])
-    ft_words = ft.drop(columns=ft.filter(like='__'))        #Technically a very small risk of a bug here if a ft_word has a __ in it.
-    ft_words = ft_words.columns.tolist()
+    ft = pd.read_csv("pdf.csv.gz", nrows=0, compression='gzip').drop(columns=['Unnamed: 0'])
+    ft_custom = ['__rem',
+         '__score',
+         '__age',
+         '__num_words',
+         '__num_uniques',
+         '__num_chars',
+         '__pct_caps',
+         '__max_cons_reps',
+         '__max_cons_rep_ch',
+         '__longest_word',
+         '__author_karma',
+         '__author_age',
+         '__top_lev',
+         '__p_removed',
+         '__p_score',
+         '__subm_score',
+         '__subm_num_co']
+    ft_words = ft.drop(columns=ft_custom).columns.tolist()
     pickle.dump([clf,thresholds,ft_words], open('classifier.sav', 'wb'))
     print("Testing completed in " + str((time.time() - tstart)/60) + "minutes")
     return
@@ -190,7 +206,7 @@ def load_data(filename="pdf.csv.gz",truncate_len=0,drop_cols=[]):
 
 def one_run(X_te, Y_te, X_tr, Y_tr, show_roc=1):
     tt = time.time()
-    print("Training our model on " + str(len(X_tr)) + " comments (with " + str(len(X_te.columns)) + " features).")
+    print("Training our model on " + str(len(X_tr)) + " of " + str(len(X_tr) + len(X_te)) + " comments (with " + str(len(X_te.columns)) + " features).")
     
     #God speed magic machine learning algorithm.
     clf = RandomForestClassifier(**default_params)
@@ -370,7 +386,7 @@ def print_mistakes(X_te, Y_te, clf, threshold=.5, count=25,show_fp=1,show_fn=1):
     
     #Todo1 - only works with unshuffled data! Fix!    
     #Todo1 - possibly related ... this doesn't seem to work after 130 or so. Maybe because I manually fucked with the df though.
-    rawdf = pd.read_csv("rawdf.csv", keep_default_na=False)
+    rawdf = pd.read_csv("rawdf.csv.gz", keep_default_na=False, compression='gzip')
     fneg = fpos = 0
     
     for i in range(len(Y_te)):
@@ -414,7 +430,7 @@ def print_mistakes(X_te, Y_te, clf, threshold=.5, count=25,show_fp=1,show_fn=1):
     
 def print_extreme_comments(X, clf):
     
-    rawdf = pd.read_csv("rawdf.csv", keep_default_na=False)
+    rawdf = pd.read_csv("rawdf.csv.gz", keep_default_na=False)
     
     y_probas = clf.predict_proba(X)[:, 1].tolist()
     
