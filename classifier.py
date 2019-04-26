@@ -8,6 +8,9 @@
     u/CAM-Gerlach - Tireless consultant, ML wizard
 """
 
+#TODO2 - save the list of checked comments to allow retarts without duplicated effort
+#TODO2 - allow data_collection, flagged as 'collected_live'
+    # - goal is to train on live collected data to enable more use of meta data (parent comment data, num_siblinges, etc.)
 #TODO2 - switch to more fine tuneable thresholds (99.9%)
 #TODO2 - move drop_cols to config
 #TODO2 - show what key words/features appeared in the comment
@@ -194,15 +197,16 @@ for co in subreddit.stream.comments():
             
             # Print each comment.
             # If bad, report/remove it
-            print("Elapsed time: " + str(int((time.time() - tstart)/86400)) + "d, " +
-                  str(int(((time.time() - tstart) % 86400)/3600)) + "h, " +
-                  str(int(((time.time() - tstart) % 3600)/60)) + "m")
-            print("Comment #: " + str(co_count))
-            print("Probability: " + str(y_proba[0][0]))
-            print("Comment Score: " + str(co.score))
-            print("Author: " + str(co.author))
-            print("https://www.reddit.com" + str(co.permalink))
-            print("Body: " + str(co.body))
+            if (config['Execution']['show_all']) == "True" or y_proba[0][1] >= thresholds[int(config["Execution"]['report_fpr'])]:
+                print("Elapsed time: " + str(int((time.time() - tstart)/86400)) + "d, " +
+                      str(int(((time.time() - tstart) % 86400)/3600)) + "h, " +
+                      str(int(((time.time() - tstart) % 3600)/60)) + "m")
+                print("Comment #: " + str(co_count))
+                print("Probability: " + str(y_proba[0][0]))
+                print("Comment Score: " + str(co.score))
+                print("Author: " + str(co.author))
+                print("https://www.reddit.com" + str(co.permalink))
+                print("Body: " + str(co.body))
             if y_proba[0][1] >= thresholds[int(config["Execution"]['remove_fpr'])]:
                 # Remove threshold comment!!!
                 if (config['Execution']['test_mode']) == "True":
