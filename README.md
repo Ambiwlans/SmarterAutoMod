@@ -58,19 +58,23 @@ That's it! Going through the earlier steps every 6 months or so would probably b
 
 ## Bugs! Help! Feature Requests! Job Offers
 
-Please contact u/Ambiwlans here or on reddit if you need help with setup, run into any bugs or otherwise have a request. 
+Please contact u/Ambiwlans here or on reddit if you need help with setup, run into any bugs, or otherwise have a request. 
 
 ## Contributing
 
 Please contact u/Ambiwlans here or on reddit if you're interested in contributing. 
 
-## About
+## License
 
-Created by [u/Ambiwlans](https://github.com/Ambiwlans) for [r/SpaceX](https://www.reddit.com/r/SpaceX)
+This project is licensed under the MIT License - see the LICENSE.md file for details
+
+## Authors
+
+Created by Ambiwlans for [r/SpaceX](https://www.reddit.com/r/SpaceX). Find me on [github](https://github.com/Ambiwlans) or [reddit](https://www.reddit.com/u/Ambiwlans)
 
 See also the list of [contributors](https://github.com/Ambiwlans/SmarterAutoMod/contributors) who participated in this project.
 
 ## Acknowledgments
 
 * r/SpaceX mod team - Thanks to everyone who let me slack on mod duties while I made this
-* u/CAM-Gerlach - Tireless consultant, ML wizard
+* Christopher Gerlach - Tireless consultant, ML wizard. Find him here on [github](https://github.com/CAM-Gerlach) or [reddit](https://www.reddit.com/u/CAM-Gerlach)
