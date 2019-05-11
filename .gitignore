@@ -70,3 +70,9 @@ results/
 config\.ini
 
 *.gz
+
+todo\.txt
+
+*.bat
+
+\.spyproject/
