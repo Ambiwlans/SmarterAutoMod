@@ -36,6 +36,10 @@ This is a python 3.7 project. In addition, you will need to ensure you have the 
 
   * This also allows for removal notifications (to users who's comments have been removed). And screening notifications (to the modteam so that you cans still see what the bot has removed, just to keep an eye on it). These use the same formating options as automod so you should be able to basically copy paste yours if desired
 
+Test mode on console:
+![Test mode on console](https://raw.githubusercontent.com/Ambiwlans/SmarterAutoMod/master/images/classifier%202019-05-11.png)
+
+
 ### Data collection
 
 Run data_collecter.py. Wait. This can be stopped and started at any time since it regularly saves while data is being collected. The process of collecting 1000 submsisions takes 6 ~ 8 hours. Creates a ~15MB file.
@@ -50,11 +54,18 @@ Train.py can be run as is with no tweaking. It will produce a ROC graph and save
 
 If you want to examine what the model is doing, feature importance, want to retune your hyperparameters or otherwise want to debug the model, you'll need to edit the main() function in train.py. I've set up a number of useful codeblocks you can just uncomment to get them to run without you having to understand what the code is doing. Note that some of these functions can take a long time to complete.
 
+Sample showing ROC and Feature Importance:
+![Sample showing ROC and Feature Importance](https://raw.githubusercontent.com/Ambiwlans/SmarterAutoMod/master/images/50%20FT%20words%202019-05-11.png)
+
+
 ## Deployment
 
 Once you have trained a model, running classifier.py will start the bot classifying new comments. Note that when you first start the bot, it will immediately run through the past few hours of comments, in no particular order, this is a function of how reddit provides bots new comments.
 
 That's it! Going through the earlier steps every 6 months or so would probably be valuable in catching new trends in rule-breaking comments. But otherwise, you're done aside from tuning it.
+
+Running in report only mode:
+![Running in report only mode](https://raw.githubusercontent.com/Ambiwlans/SmarterAutoMod/master/images/mod%20queue%202019-05-05.png)
 
 ## Bugs! Help! Feature Requests! Job Offers
 
