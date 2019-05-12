@@ -8,6 +8,8 @@
     u/CAM-Gerlach - Tireless consultant, ML wizard
 """
 
+#TODO1 - move try catch to include whole loop. 404 errors seem to occur on the 1st line
+
 #TODO2 - save the list of checked comments to allow retarts without duplicated effort
 #TODO2 - allow data_collection, flagged as 'collected_live'
     # - goal is to train on live collected data to enable more use of meta data (parent comment data, num_siblinges, etc.)
@@ -20,7 +22,7 @@
     # - make stats available on reddit (wiki page) for mods
     # - via pm to bot?
 #TODO3 - Improve feedback messages on report/removal
-
+#TODO3 - 
     
 ###############################################################################
 ### Imports, Defines
@@ -84,6 +86,31 @@ def reformat_notice(rawco,notice_type,conf):
 
 tstart = time.time()
 
+#Print our running state before getting to work
+print()
+print("Smarter AutoMod")
+print("---")
+print("Subreddit: " + config['General']['subreddit'])
+if config['Execution']['classifier_mode'] == "0":
+    print("Mode: TEST MODE")
+if config['Execution']['classifier_mode'] == "1":
+    print("Mode: REPORT ONLY MODE")
+if config['Execution']['classifier_mode'] == "2":
+    print("Mode: FULL MODE")
+print("Report FPR: " + config['Execution']['report_fpr'])
+print("Remove FPR: " + config['Execution']['remove_fpr'])
+print("Send removal notice (to user): " + config['Execution']['send_removal_notice'])
+if config['Execution']['send_removal_notice'] == "True":
+    print("Notice format: ")
+    print(config['Execution']['removal_notice'])
+    print("")
+print("Send removal notice (to modteam): " + config['Execution']['send_screening_notice'])
+if config['Execution']['send_screening_notice'] == "True":
+    print("Notice format: ")
+    print(config['Execution']['screening_notice'])
+    print("")
+print("---")
+print("")
 
 
 #Load data
@@ -104,7 +131,8 @@ except:
 if r.user.me() == None:
     print("No login credentials or invalid login.")
     sys.exit(1)
-    
+
+print("Starting classification...")
 ###############################################################################
 ### Main loop
 ###############################################################################
@@ -195,9 +223,10 @@ for co in subreddit.stream.comments():
             #
             # Report or removed based on thresholds in config file.
             
-            # Print each comment.
-            # If bad, report/remove it
-            if (config['Execution']['show_all']) == "True" or y_proba[0][1] >= thresholds[int(config["Execution"]['report_fpr'])]:
+            conflvl = str(get_conf(y_proba[0][1],thresholds))
+            
+            #Print comment if it hits a threshold OR if we are printing accepted comments            
+            if (config['Execution']['show_accepted'] == "True") or (y_proba[0][1] >= thresholds[int(config["Execution"]['report_fpr'])]):
                 print("Elapsed time: " + str(int((time.time() - tstart)/86400)) + "d, " +
                       str(int(((time.time() - tstart) % 86400)/3600)) + "h, " +
                       str(int(((time.time() - tstart) % 3600)/60)) + "m")
@@ -207,42 +236,44 @@ for co in subreddit.stream.comments():
                 print("Author: " + str(co.author))
                 print("https://www.reddit.com" + str(co.permalink))
                 print("Body: " + str(co.body))
+                
+            #Handle Remove, Report, and Accept threshold comments
             if y_proba[0][1] >= thresholds[int(config["Execution"]['remove_fpr'])]:
                 # Remove threshold comment!!!
-                if (config['Execution']['test_mode']) == "True":
+                if (config['Execution']['classifier_mode']) == "0":
                     #TEST MODE - no reddit actions
-                    print('\x1b[1;31;41m' + 'REMOVE THRESHOLD!' + '\x1b[0m')
+                    print('\x1b[1;30;41m' + 'REMOVE THRESHOLD!' + '\x1b[0m -- (No action taken - Test Mode)')
                 else:
-                    if (config['Execution']['report_only_mode']) == "True":
+                    if (config['Execution']['classifier_mode']) == "1":
                         #REPORT ONLY MODE - report instead of removing
-                        co.report("BeepBoop -  Robot REALLY no like! (Conf:" + str(get_conf(y_proba[0][1],thresholds)) + "%)")
-                        print('\x1b[1;31;41m' + 'REMOVE THRESHOLD!' + '\x1b[0m' + ' ... reporting.')
-                    else:
-                        #NORMAL MODE - remove bad comment
+                        co.report("BeepBoop -  Robot REALLY no like! (Conf:" + conflvl + "%)")
+                        print('\x1b[1;30;41m' + 'REMOVE THRESHOLD!' + '\x1b[0m -- (Reported - Report Only Mode)')
+                    elif (config['Execution']['classifier_mode']) == "2":
+                        #Full Mode - remove bad comment
                         co.mod.remove()
                         print('\x1b[1;31;41m' + 'REMOVED!' + '\x1b[0m')
                         if (config['Execution']['send_removal_notice']) == "True":
-                            print("Sending removal notification...")
-                            co.mod.send_removal_message(reformat_notice(rawco,0,str(get_conf(y_proba[0][1],thresholds))), title='Removal Notification', type='private')
+                            print("Sending user removal notification...")
+                            co.mod.send_removal_message(reformat_notice(rawco,0,conflvl), title='Removal Notification', type='private')
                         if (config['Execution']['send_screening_notice']) == "True":
                             r.redditor(config['Execution']['screening_workaround_user']).message('Removal Notification', reformat_notice(rawco,1,str(get_conf(y_proba[0][1],thresholds))),from_subreddit=config['General']['subreddit'])
-                print("Confidence level of violation: " + str(get_conf(y_proba[0][1],thresholds)))        
-                    
+                            print("Sending modteam removal notification...")
+                print("Confidence level of violation: " + conflvl)        
             elif y_proba[0][1] >= thresholds[int(config["Execution"]['report_fpr'])]:
                 # Report threshold comment!
-                if (config['Execution']['test_mode']) == "True":
+                if (config['Execution']['classifier_mode']) == "0":
                     #TEST MODE - no reddit actions
-                    print('\x1b[2;30;43m' + 'REPORT THRESHOLD!' + '\x1b[0m')
-                else:
-                    #NORMAL MODE - report bad comment
-                    co.report("BeepBoop -  Robot no like! (Conf:" + str(get_conf(y_proba[0][1],thresholds)) + "%)")
+                    print('\x1b[2;30;43m' + 'REPORT THRESHOLD!' + '\x1b[0m -- (No action taken - Test Mode)')
+                elif (config['Execution']['classifier_mode']) == "2":
+                    #Full Mode - report bad comment
+                    co.report("BeepBoop -  Robot no like! (Conf:" + conflvl + "%)")
                     print('\x1b[2;30;43m' + 'REPORTED!' + '\x1b[0m')
-                print("Confidence level of violation: " + str(get_conf(y_proba[0][1],thresholds)) + "%")
+                print("Confidence level of violation: " + conflvl + "%")
             else:
-                # Good comment - no actions required
-                if (config['Execution']['show_all']) == "True":
+                # Acceptable comment. - no actions required
+                if (config['Execution']['show_accepted']) == "True":
                     print('\x1b[1;37;42m' + 'ACCEPTED!' + '\x1b[0m')
-                    print("Confidence level of violation: " + str(get_conf(y_proba[0][1],thresholds)))
+                    print("Confidence level of violation: " + conflvl)
             print("---")
         except RequestException:
             time.sleep(300)
