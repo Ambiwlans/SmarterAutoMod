@@ -142,12 +142,13 @@ subreddit = r.subreddit(config['General']['subreddit'])
 co_count = 0
 co_record = deque([], 1000)
 
-for co in subreddit.stream.comments():
-    #Keep trying every 5 minutes if there are connection issues to avoid downtime.
-    keeptrying = True
-    while keeptrying:
-        keeptrying = False
-        try:
+#Keep trying every 5 minutes if there are connection issues to avoid downtime.
+keeptrying = True
+while keeptrying:
+    keeptrying = False
+    try:
+        for co in subreddit.stream.comments():
+
             
             ###########################################################################
             # Collect a comment
@@ -275,13 +276,14 @@ for co in subreddit.stream.comments():
                     print('\x1b[1;37;42m' + 'ACCEPTED!' + '\x1b[0m')
                     print("Confidence level of violation: " + conflvl)
             print("---")
-        except RequestException:
-            time.sleep(300)
-            print("Connection error. Waiting 5 minutes before trying again.")
-            keeptrying = True
-        except KeyboardInterrupt:
-            print("Exiting...")
-            sys.exit(0)
+            
+    except RequestException:
+        time.sleep(300)
+        print("Connection error. Waiting 5 minutes before trying again.")
+        keeptrying = True
+    except KeyboardInterrupt:
+        print("Exiting...")
+        sys.exit(0)
     
     
     
