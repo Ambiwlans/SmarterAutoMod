@@ -8,21 +8,24 @@
     u/CAM-Gerlach - Tireless consultant, ML wizard
 """
 
-#TODO1 - move try catch to include whole loop. 404 errors seem to occur on the 1st line
+#TODO2 - switch to more fine tuneable thresholds (99.9%)
+#TODO2 - move drop_cols to config
 
 #TODO2 - save the list of checked comments to allow retarts without duplicated effort
 #TODO2 - allow data_collection, flagged as 'collected_live'
+    # - Also save report/remove/proba status (to allow us to see the real TPR, FPR)
     # - goal is to train on live collected data to enable more use of meta data (parent comment data, num_siblinges, etc.)
-#TODO2 - switch to more fine tuneable thresholds (99.9%)
-#TODO2 - move drop_cols to config
-#TODO2 - show what key words/features appeared in the comment
-    # - http://blog.datadive.net/random-forest-interpretation-with-scikit-learn/
+#TODO2 - Give removal/report reasons.
+    # - 1) show what key words/features appeared in the comment
+        # - http://blog.datadive.net/random-forest-interpretation-with-scikit-learn/
+    # - 2) Train a second model (unsupervised clustering) to find removal 'classes'
+        # - manually label those classes after the fact
 #TODO2 - logging to file option
 #TODO2 - Collect stats
     # - make stats available on reddit (wiki page) for mods
     # - via pm to bot?
 #TODO3 - Improve feedback messages on report/removal
-#TODO3 - 
+#TODO3 - Re-run on comments after 6 hrs to catch age related features
     
 ###############################################################################
 ### Imports, Defines
@@ -133,6 +136,7 @@ if r.user.me() == None:
     sys.exit(1)
 
 print("Starting classification...")
+
 ###############################################################################
 ### Main loop
 ###############################################################################
@@ -247,7 +251,7 @@ while keeptrying:
                 else:
                     if (config['Execution']['classifier_mode']) == "1":
                         #REPORT ONLY MODE - report instead of removing
-                        co.report("BeepBoop -  Robot REALLY no like! (Conf:" + conflvl + "%)")
+                        co.report("BeepBoop -  🔥🔥🔥 Robot REALLY no like! 🔥🔥🔥 (Conf:" + conflvl + "%)")
                         print('\x1b[1;30;41m' + 'REMOVE THRESHOLD!' + '\x1b[0m -- (Reported - Report Only Mode)')
                     elif (config['Execution']['classifier_mode']) == "2":
                         #Full Mode - remove bad comment
@@ -257,7 +261,9 @@ while keeptrying:
                             print("Sending user removal notification...")
                             co.mod.send_removal_message(reformat_notice(rawco,0,conflvl), title='Removal Notification', type='private')
                         if (config['Execution']['send_screening_notice']) == "True":
-                            r.redditor(config['Execution']['screening_workaround_user']).message('Removal Notification', reformat_notice(rawco,1,str(get_conf(y_proba[0][1],thresholds))),from_subreddit=config['General']['subreddit'])
+                            r.redditor(config['Execution']['screening_workaround_user']).message('Removal Notification', 
+                                      reformat_notice(rawco,1,str(get_conf(y_proba[0][1],thresholds))),
+                                      from_subreddit=config['General']['subreddit'])
                             print("Sending modteam removal notification...")
                 print("Confidence level of violation: " + conflvl)        
             elif y_proba[0][1] >= thresholds[int(config["Execution"]['report_fpr'])]:
@@ -265,8 +271,8 @@ while keeptrying:
                 if (config['Execution']['classifier_mode']) == "0":
                     #TEST MODE - no reddit actions
                     print('\x1b[2;30;43m' + 'REPORT THRESHOLD!' + '\x1b[0m -- (No action taken - Test Mode)')
-                elif (config['Execution']['classifier_mode']) == "2":
-                    #Full Mode - report bad comment
+                elif (config['Execution']['classifier_mode']) in ("1","2"):
+                    #FULL OR REPORT ONLY Mode or  - report bad comment
                     co.report("BeepBoop -  Robot no like! (Conf:" + conflvl + "%)")
                     print('\x1b[2;30;43m' + 'REPORTED!' + '\x1b[0m')
                 print("Confidence level of violation: " + conflvl + "%")
