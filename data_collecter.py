@@ -8,8 +8,10 @@
     u/CAM-Gerlach - Tireless consultant, ML wizard
 """
 
+#TODO1 - add front end updating (adding in recent threads to the top of the df)
+
+#TODO2 - add support for subs that don't approve all threads.
 #TODO2 - Reconstruct comment tree structures -> allows more meta data on locations of comments ('parent of parent = me' implies a conversation)
-#TODO2 - add front end updating (adding in recent threads to the top of the df)
 #TODO2 - Ignore quarantined threads (not used in r/Spacex)
 #TODO2 - Add support for username/pass login + script that will return OAuth token
 
@@ -151,15 +153,17 @@ for s in subreddit.new(limit=int(config['General']['num_submissions']),params=co
             ignore_message = ("Ignored by title: \"" + s.title +"\"")
         if(re.search(config['General']['ignore_submission_flair'],str(s.link_flair_text))):
             ignore_message = ("Ignored by flair: \"" + s.title +"\"")
-        if (time.time() - s.approved_at_utc)  < int(config['General']['ignore_recent_submission_age']) * 3600:
-            ignore_message = ("Ignored recent: \"" + s.title +"\"")
-        
+        if(s.approved_at_utc != None):
+            if (time.time() - s.approved_at_utc)  < int(config['General']['ignore_recent_submission_age']) * 3600:
+                ignore_message = ("Ignored recent: \"" + s.title +"\"")
+        else:
+            ignore_message = ("Ignored unapproved thread: \"" + s.title +"\"")
         if ignore_message != "":
             if config['Debug']['verbose'] == "True": print(ignore_message)
             continue
             
         s_count = s_count + 1
-        print("Working on submission #:" + str(s_count) + "       Comment #:" + str(co_count))
+        print("Submission #: " + str(s_count) + "\t\tComment #: " + str(co_count) + "\t\tDate: " + str(time.ctime(int(time.time()))))
               
         s.comments.replace_more(limit=0)
         comments = s.comments.list()
@@ -238,7 +242,7 @@ for s in subreddit.new(limit=int(config['General']['num_submissions']),params=co
             continue
         
     #save the csv every 10th submission scanned
-    if s_count % 10 is 0:
+    if s_count % 10 == 0:
         try:
             rawdf.to_csv("rawdf.csv.gz", compression='gzip')
             print("Saved raw data.")
