@@ -14,7 +14,8 @@ user_agent=
 
 [General]
 ;Your subreddit
-subreddit = SpaceX
+;ie subreddit = SpaceX
+subreddit = 
 
 ;Use existing datafile if it exists (allows resuming comment scrapeing)
 use_old_df = True
@@ -23,6 +24,11 @@ use_old_df = True
 ;The maximum allowed by Reddit's API (1000) is suggested
 ;File should be under 20MB
 num_submissions = 1000
+
+;Post start time type
+; 0 = post creation time. When the poster submitted it, default for most subs
+; 1 = post approval time. When a mod approved the thread. This should be on if you sub hides posts until mod approval
+post_start_type = 0
 
 ;This allows you to ignore threads with special rules by title or name. Plain text or REGEX matching. Case sensitive. Unflaired is matched with 'None'
 ignore_submission_title = (Party Thread|Official Launch|META|Sources Required|Media Thread|Discusses|Moderator|Mod|Update Thread|Updates Thread)

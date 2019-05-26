@@ -9,8 +9,10 @@
 """
 
 #TODO1 - add front end updating (adding in recent threads to the top of the df)
-
 #TODO2 - add support for subs that don't approve all threads.
+
+#TODO2 - Does it differentiate removed by automoderator and removed by a human mod? r/atheism
+    # - filter out 'filtered' comments.
 #TODO2 - Reconstruct comment tree structures -> allows more meta data on locations of comments ('parent of parent = me' implies a conversation)
 #TODO2 - Ignore quarantined threads (not used in r/Spacex)
 #TODO2 - Add support for username/pass login + script that will return OAuth token
@@ -141,6 +143,21 @@ print("----")
 
 for s in subreddit.new(limit=int(config['General']['num_submissions']),params=continue_param):
     try:
+        #Get the start time from config
+        if config['General']['post_start_type'] == "0":
+            #Using s.created_utc
+            s_start_time = s.created_utc
+        elif config['General']['post_start_type'] == "1":
+            #Using s.approved_at_utc
+            if(s.approved_at_utc != None):
+                s_start_time = s.approved_at_utc
+            else:
+                s_start_time = 0
+                ignore_message = ("Ignored unapproved thread: \"" + s.title +"\"")
+        else:
+            print ("Error: Config file option 'post_start_type' should be 0 or 1.")
+            sys.exit(0)
+        
         #Ignore certain submissions
         ignore_message = ""
         if s.num_comments < int(config['General']['ignore_min_co']):
@@ -153,17 +170,16 @@ for s in subreddit.new(limit=int(config['General']['num_submissions']),params=co
             ignore_message = ("Ignored by title: \"" + s.title +"\"")
         if(re.search(config['General']['ignore_submission_flair'],str(s.link_flair_text))):
             ignore_message = ("Ignored by flair: \"" + s.title +"\"")
-        if(s.approved_at_utc != None):
-            if (time.time() - s.approved_at_utc)  < int(config['General']['ignore_recent_submission_age']) * 3600:
-                ignore_message = ("Ignored recent: \"" + s.title +"\"")
-        else:
-            ignore_message = ("Ignored unapproved thread: \"" + s.title +"\"")
+        if (time.time() - s_start_time)  < int(config['General']['ignore_recent_submission_age']) * 3600:
+            ignore_message = ("Ignored recent: \"" + s.title +"\"")
+        
+        #Print ignore message and skip submission
         if ignore_message != "":
             if config['Debug']['verbose'] == "True": print(ignore_message)
             continue
             
         s_count = s_count + 1
-        print("Submission #: " + str(s_count) + "\t\tComment #: " + str(co_count) + "\t\tDate: " + str(time.ctime(int(time.time()))))
+        print("Submission #: " + str(s_count) + "\t\tComment #: " + str(co_count) + "\t\tDate: " + str(time.ctime(s_start_time)))
               
         s.comments.replace_more(limit=0)
         comments = s.comments.list()
@@ -186,10 +202,9 @@ for s in subreddit.new(limit=int(config['General']['num_submissions']),params=co
             #Ignore certain comments
             if(re.search(config['General']['ignore_user'],str(co.author))):
                 continue
-            if s.approved_at_utc is not None:
-                if((co.created_utc - s.approved_at_utc) > (int(config['General']['ignore_late_comment_age']) * 3600 )):
-                    #print("Ignored late comer comment: \"" + c.body +"\"")
-                    continue
+            if((co.created_utc - s_start_time) > (int(config['General']['ignore_late_comment_age']) * 3600 )):
+                #print("Ignored late comer comment: \"" + c.body +"\"")
+                continue
             if co.body == "[deleted]" or co.body == "" or co.body == "[removed]":
                 #print("Ignored deleted comment: \"" + c.body +"\"")
                 continue
@@ -197,8 +212,7 @@ for s in subreddit.new(limit=int(config['General']['num_submissions']),params=co
                 print("Ignored comment by content: \"" + co.body +"\"")
                 continue
             
-            #TODO2 - check that we got back valid information ... error checking better than the try/catch?
-            #TODO2 - using approved_at_utc over created_utc. This may not word for other subs
+            #TODO2 - check that we got back valid information ...
             
             p = co.parent()
             author = co.author
@@ -224,7 +238,7 @@ for s in subreddit.new(limit=int(config['General']['num_submissions']),params=co
                                      'subm_fullname':s.name,
                                      'subm_title':s.title.encode('ascii', 'ignore').decode(),
                                      'subm_score':s.score,
-                                     'subm_approved_at_utc':s.approved_at_utc,
+                                     'subm_time':s_start_time,
                                      'subm_num_co':len(comments)})
             rawdf = rawdf.append(raw_comment, ignore_index=True)
         except KeyboardInterrupt:

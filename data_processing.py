@@ -8,6 +8,7 @@
     u/CAM-Gerlach - Tireless consultant, ML wizard
 """
 #TODO1 - BUG - Emotes not being captured?
+
 #TODO1 - tidy main, proc_one_co
     # rem unneeded virtcsv stuff
 #TODO1 - ask first when saving over existing file.
@@ -28,10 +29,12 @@
 #TODO3 - clip the index columns rather than saving them?
 #TODO3 - switch feature word selection to use a RF or elastic net/lasso rather than simple stats.... 
         # could also include some words by raw rate (rather than the difference in rates) then cut down in learn. Or a blend
+        # probably not worth given the tiny impact of adding words as it is... probably.
 #TODO3 - squeeze everything into uint8s? No point if it works fast enough already
 #TODO3 - Risk of bobbytables abuses (say _domain_twittercom in a comment to confuse bot) is pretty minor
 #TODO3 - Implement Automod as a feature (useless for subs without an advanced automod, costly, lots of code)
-    
+#TODO5 - look into switching to spaCy for deeper linguistic features
+        
 ###############################################################################
 ### Imports, Defines, Globals
 ###############################################################################
@@ -234,7 +237,7 @@ def stage_1(rawdf):
             "tokens":[],
             "__rem":rawdf.iloc[i]["removed"], 
             "__score":rawdf.iloc[i]["score"],
-            "__age":(rawdf.iloc[i]["time"] - rawdf.iloc[i]["subm_approved_at_utc"]),
+            "__age":(rawdf.iloc[i]["time"] - rawdf.iloc[i]["subm_time"]),
             "__num_words":0,
             "__num_uniques":0,
             "__num_chars":0,
