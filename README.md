@@ -4,6 +4,15 @@ Machine learning script that can automatically report/remove bad comments in a r
 
 ### Prerequisites
 
+No programming, advanced stats, or machine learning knowledge is needed to use this bot! 
+
+You will need:
+
+- A computer or server that can run continuously with a few hundred MB of ram and drive space.
+- Experience running scripts, tweaking config files or a willingness to figure it out
+- Some time to spend tuning the settings for your sub reddit (though it should work OK out of the box with defaults)
+- Mod access to a subreddit that gets a [few hundred comments a day](https://subredditstats.com/) (to ensure enough data to learn from)
+
 This is a python 3.7 project. In addition, you will need to ensure you have the following packages installed (via pip or otherwise):
 
 - praw
@@ -12,17 +21,18 @@ This is a python 3.7 project. In addition, you will need to ensure you have the 
 - pandas
 - matplotlib
 - nltk
+- configparser
 
 ```
-  ie. pip install praw
+  ie. pip install praw scikit-learn numpy pandas matplotlib nltk configparser
 ```
 
 
 ## Initial setup/Config
 
-* Make a copy of config.ini.default and simply name it config.ini then edit it
+* Rename config.ini.default to config.ini then start to edit it
 
-* Login - Put in your oauth bot's login credentials. Go here: https://github.com/reddit-archive/reddit/wiki/OAuth2-Quick-Start-Example if you're not sure how to get an oauth refresh token. The bot's account must of course have mod access to the subreddit.
+* Login - Put in your oauth bot's login credentials. Go here: https://github.com/reddit-archive/reddit/wiki/OAuth2-Quick-Start-Example if you're not sure how to get an oauth refresh token. The bot's account must of course have mod access to the subreddit. This is probably the most tedious step in the whole process. 
 
 * General - You'll need to put in your subreddit name, and change any other settings here you like, most of the regex can be taken from your existing automod.
 
@@ -34,7 +44,7 @@ This is a python 3.7 project. In addition, you will need to ensure you have the 
 
   * To avoid issues, there is a test_mode (on by default) so that the bot will only print out what it *would* do without ever doing anything on reddit itself. When you've got the settings you want and after running it in this mode for a while, the bot appears to be correctly flagging bad comments, you can switch this off. For an extra layer of flexibility, when you turn off test_mode, you can leave on report_only_mode which will have the bot do automated reports, but not removals.
 
-  * This also allows for removal notifications (to users who's comments have been removed). And screening notifications (to the modteam so that you cans still see what the bot has removed, just to keep an eye on it). These use the same formating options as automod so you should be able to basically copy paste yours if desired
+  * This also allows for removal notifications (to users whose comments have been removed). And screening notifications (to the modteam so that you cans still see what the bot has removed, just to keep an eye on it). These use the same formatting options as automod so you should be able to basically copy paste yours if desired
 
 Test mode on console:
 ![Test mode on console](https://raw.githubusercontent.com/Ambiwlans/SmarterAutoMod/master/images/classifier%202019-05-11.png)
@@ -42,11 +52,11 @@ Test mode on console:
 
 ### Data collection
 
-Run data_collecter.py. Wait. This can be stopped and started at any time since it regularly saves while data is being collected. The process of collecting 1000 submsisions takes 6 ~ 8 hours. Creates a ~15MB file.
+Run data_collector.py. Wait. This can be stopped and started at any time since it regularly saves while data is being collected. The process of collecting 1000 submissions takes 6 ~ 8 hours. Creates a ~15MB file.
 
 ### Data processing
 
-Run data_processing.py. This takes significantly more computer resources and can take a few hours. It cannot be stopped midway. Suggested to run it overnight to not get in the way. Creates a ~15MB file.
+Run data_processing.py. This takes significantly more computer resources and can take a few hours. It cannot be stopped midway. I suggest you run it overnight to not get in the way. Creates a ~15MB file.
 
 ### Learning
 
@@ -54,7 +64,7 @@ Train.py can be run as is with no tweaking. It will produce a ROC graph and save
 
 If you want to examine what the model is doing, feature importance, want to retune your hyperparameters or otherwise want to debug the model, you'll need to edit the main() function in train.py. I've set up a number of useful codeblocks you can just uncomment to get them to run without you having to understand what the code is doing. Note that some of these functions can take a long time to complete.
 
-Sample showing ROC and Feature Importance:
+Sample showing [ROC](https://en.wikipedia.org/wiki/Receiver_operating_characteristic) and Feature Importance:
 ![Sample showing ROC and Feature Importance](https://raw.githubusercontent.com/Ambiwlans/SmarterAutoMod/master/images/50%20FT%20words%202019-05-11.png)
 
 
