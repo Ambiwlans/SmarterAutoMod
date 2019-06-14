@@ -9,10 +9,7 @@
 """
 
 #TODO1 - add front end updating (adding in recent threads to the top of the df)
-#TODO2 - add support for subs that don't approve all threads.
 
-#TODO2 - Does it differentiate removed by automoderator and removed by a human mod? r/atheism
-    # - filter out 'filtered' comments.
 #TODO2 - Reconstruct comment tree structures -> allows more meta data on locations of comments ('parent of parent = me' implies a conversation)
 #TODO2 - Ignore quarantined threads (not used in r/Spacex)
 #TODO2 - Add support for username/pass login + script that will return OAuth token
@@ -46,6 +43,7 @@ import pandas as pd
 #Other py files
 from login import login
 
+from prawcore import BadRequest    #Praw 400 Error Code
 
 ###############################################################################
 ### Config/Startup
@@ -89,9 +87,19 @@ if r.user.me() == None:
 ###############################################################################
 ### Load old data if set/available
 ###############################################################################
-    
-subreddit = r.subreddit(config['General']['subreddit'])     # read comments from sub in config    
 
+
+subreddit = r.subreddit(config['General']['subreddit'].rsplit('/')[-1])     # read comments from sub in config    
+
+try:
+    subreddit.id = subreddit.id
+    print("Preparing to collect comments from: " + subreddit.display_name)
+except BadRequest:
+    print ("BadRequest: received 400 HTTP response")
+    print("Malformed subreddit name, check config file.")
+except Exception as ex:
+    print("Error during subreddit name read: " + str(type(ex).__name__))
+    
 #load and continue from existing csv
 if config['General']['use_old_df'] == "True":
     try:

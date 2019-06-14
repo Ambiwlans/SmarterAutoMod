@@ -1,9 +1,4 @@
 [Login]
-;Login to your account
-;Leaving your account password in plain text is bad. Don't use this. (Not implemented right now anyways)
-username = 
-password =
-
 ;Registered bot information
 ;How do you register a bot and get a refresh token? Check out: https://github.com/reddit-archive/reddit/wiki/OAuth2-Quick-Start-Example
 refresh_token=
@@ -53,18 +48,10 @@ ignore_comment_content = RemindMe
 
 
 [Processing]
-;Allows you to ensure the machine finds certain regex matches in comments. (not implemented)
-;Useful for word clusters, colocations, complex regex or multi-token strings. Single words are found already but can be one-hotted by putting them in here.
-;Note: These can dramatically slow down processing, use sparingly.
-custom_regex_matches = "need a bigger","mass effect", "fly safe", "?m(u|e)rica!?", "checks out", "bouncy castle", "mark watney","James Cameron","educate yourself","possibly go wrong","do you even","B\d\d\d\d"
-
 ;How many feature words to look at. 
 ;Increasing this will increase file sizes and processing time for relatively minor gains. 1000 is fairly balanced.
 ;Max suggestion is the number of comments/50 ... comments/100 is probably decent (the hyperparameters are tuned for 1000)
 num_ft_words = 1000
-
-;Turn on stemming (not implemented)
-stemming = False
 
 
 [Training]
