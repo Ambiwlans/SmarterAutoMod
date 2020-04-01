@@ -168,6 +168,22 @@ while keeptrying:
                 author_age = 0    
             
             s = co.submission    
+			
+			#Get the start time from config
+			if config['General']['post_start_type'] == "0":
+				#Using s.created_utc
+				s_start_time = s.created_utc
+			elif config['General']['post_start_type'] == "1":
+				#Using s.approved_at_utc
+				if(s.approved_at_utc != None):
+					s_start_time = s.approved_at_utc
+				else:
+					s_start_time = 0
+					ignore_message = ("Ignored unapproved thread: \"" + s.title +"\"")
+			else:
+				print ("Error: Config file option 'post_start_type' should be 0 or 1.")
+				sys.exit(0)
+			
             rawco = pd.Series({'removed':co.removed,
                              'comment':co.body.encode('ascii', 'ignore').decode(), 
                              'score':co.score,
@@ -182,7 +198,7 @@ while keeptrying:
                              'subm_fullname':s.name,
                              'subm_title':s.title.encode('ascii', 'ignore').decode(),
                              'subm_score':s.score,
-                             'subm_approved_at_utc':s.approved_at_utc,
+                             'subm_time':s_start_time,
                              'subm_num_co':s.num_comments})
             
             ###########################################################################
@@ -201,7 +217,7 @@ while keeptrying:
                 ignore_message = ("Ignored by title: \"" + s.title +"\"")
             if(re.search(config['General']['ignore_submission_flair'],str(s.link_flair_text))):
                 ignore_message = ("Ignored by flair: \"" + s.title +"\"")
-            if s.approved_at_utc is None:
+            if s.approved_at_utc is None and config['General']['post_start_type'] == "1":
                 ignore_message = "Ignoring not yet approved thread"
             #ignore comments
             if(re.search(config['General']['ignore_user'],str(co.author))):
